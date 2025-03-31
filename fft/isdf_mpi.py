@@ -17,8 +17,6 @@ from pyscf.pbc.lib.kpts_helper import is_zero
 from pyscf.pbc.tools.k2gamma import get_phase
 from pyscf.pbc.df.df_jk import _format_dms, _format_kpts_band, _format_jks
 
-import line_profiler
-
 PYSCF_MAX_MEMORY = int(os.environ.get("PYSCF_MAX_MEMORY", 2000))
 
 import df.fftisdf as fftisdf
@@ -30,7 +28,6 @@ comm = MPI.COMM_WORLD
 rank = comm.Get_rank()
 size = comm.Get_size()
 
-@line_profiler.profile
 def build(df_obj, inpx=None):
     """
     Build the FFT-ISDF object with proper MPI support.
