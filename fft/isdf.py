@@ -37,8 +37,8 @@ def _eta_kpt_g0g1(ao_kpt, inpv_kpt, phase):
     nkpt, ngrid, nao = ao_kpt.shape
     nip = inpv_kpt.shape[1]
 
-    t_kpt = numpy.asarray([fk.conj() @ xk.T for fk, xk in zip(ao_kpt, inpv_kpt)])
-    assert t_kpt.shape == (nkpt, ngrid, nip)
+    t_kpt = ao_kpt.conj() @ inpv_kpt.transpose(0, 2, 1)
+    t_kpt = t_kpt.reshape(nkpt, ngrid, nip)
     t_spc = kpt_to_spc(t_kpt, phase)
     
     eta_spc_g0g1 = t_spc ** 2
@@ -104,8 +104,8 @@ class InterpolativeSeparableDensityFitting(FFTDF):
     _coul_kpt = None
     _inpv_kpt = None
 
-    blksize = None
     tol = 1e-10
+    blksize = None
     c0 = None
     inpx = None
 
@@ -125,8 +125,8 @@ class InterpolativeSeparableDensityFitting(FFTDF):
         log.info("len(kpts) = %d", len(self.kpts))
         return self
     
-    def build(self, verbose=0):
-        log = logger.new_logger(self, verbose)
+    def build(self):
+        log = logger.new_logger(self, self.verbose)
         t0 = (process_clock(), perf_counter())
         max_memory = max(2000, self.max_memory - current_memory()[0])
 
@@ -193,7 +193,9 @@ class InterpolativeSeparableDensityFitting(FFTDF):
         phase = get_phase(cell, kpts, kmesh=kmesh, wrap_around=self.wrap_around)[1]
 
         # compute metrix tensor in k-space
-        t_kpt = numpy.asarray([xk.conj() @ xk.T for xk in inpv_kpt])
+        t_kpt = inpv_kpt.conj() @ inpv_kpt.transpose(0, 2, 1)
+        t_kpt = t_kpt.reshape(nkpt, nip, nip)
+
         t_spc = kpt_to_spc(t_kpt, phase)
         metx_kpt = spc_to_kpt(t_spc * t_spc, phase)
 
@@ -201,28 +203,38 @@ class InterpolativeSeparableDensityFitting(FFTDF):
         eta_kpt = fswap.create_dataset("eta_kpt", shape=(nkpt, ngrid, nip), dtype=numpy.complex128) \
             if fswap is not None else numpy.zeros((nkpt, ngrid, nip), dtype=numpy.complex128)
         
+        log.debug("\nComputing eta_kpt")
+        info = (lambda s: f"eta_kpt[ %{len(s)}d: %{len(s)}d]")(str(ngrid))
         aoR_loop = self.aoR_loop(grids, kpts, 0, blksize=self.blksize)
         for ig, (ao_etc_kpt, g0, g1) in enumerate(aoR_loop):
+            t0 = (process_clock(), perf_counter())
             ao_kpt = numpy.asarray(ao_etc_kpt[0])
-            eta_kpt[:, g0:g1, :] = _eta_kpt_g0g1(ao_kpt, inpv_kpt, phase)
+            eta_kpt_g0g1 = _eta_kpt_g0g1(ao_kpt, inpv_kpt, phase)
+            eta_kpt[:, g0:g1, :] = eta_kpt_g0g1
+            t1 = log.timer(info % (g0, g1), *t0)
 
-        coul_kpt = []
+        log.debug("\nComputing coul_kpt")
+        info = (lambda s: f"coul_kpt[ %{len(s)}d / {s}]")(str(nkpt))
+
+        v0 = cell.get_Gv(mesh)
+        coul_kpt = numpy.zeros((nkpt, nip, nip), dtype=numpy.complex128)
         for q in range(nkpt):
+            t0 = (process_clock(), perf_counter())
             metx_q = metx_kpt[q]
             eta_q = eta_kpt[q]
 
             tq = numpy.dot(grids.coords, kpts[q])
             fq = numpy.exp(-1j * tq) 
-            vq = pbctools.get_coulG(cell, k=kpts[q], mesh=mesh)
+            vq = pbctools.get_coulG(cell, k=kpts[q], Gv=v0, mesh=mesh)
             vq *= cell.vol / ngrid
 
             v_q = fft(eta_q.T * fq, mesh) * vq
             w_q = ifft(v_q, mesh) * fq.conj()
 
             coul_q = _coul_q(metx_q, eta_q, w_q, tol=tol)
-            coul_kpt.append(coul_q)
+            coul_kpt[q] = coul_q
+            t1 = log.timer(info % (q + 1), *t0)
 
-        coul_kpt = numpy.asarray(coul_kpt)
         self._coul_kpt = coul_kpt
         self._inpv_kpt = inpv_kpt
 

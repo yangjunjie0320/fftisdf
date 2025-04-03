@@ -8,8 +8,6 @@ from pyscf.pbc.lib.kpts_helper import is_zero
 from pyscf.pbc.tools.k2gamma import get_phase, kpts_to_kmesh as pyscf_kpts_to_kmesh
 from pyscf.pbc.df.df_jk import _format_dms, _format_kpts_band, _format_jks
 
-import line_profiler
-
 PYSCF_MAX_MEMORY = int(os.environ.get("PYSCF_MAX_MEMORY", 2000))
 
 def kpts_to_kmesh(df_obj, kpts):
@@ -34,7 +32,6 @@ def kpt_to_spc(m_kpt, phase):
     m_spc = m_spc.reshape(m_kpt.shape)
     return m_spc.real
 
-@line_profiler.profile
 def get_j_kpts(df_obj, dm_kpts, hermi=1, kpts=numpy.zeros((1, 3)), kpts_band=None,
                exxdiv=None):
     """
@@ -105,7 +102,6 @@ def get_j_kpts(df_obj, dm_kpts, hermi=1, kpts=numpy.zeros((1, 3)), kpts_band=Non
         vj_kpts = vj_kpts.real
     return _format_jks(vj_kpts, dm_kpts, input_band, kpts)
 
-@line_profiler.profile
 def get_k_kpts(df_obj, dm_kpts, hermi=1, kpts=numpy.zeros((1, 3)), kpts_band=None,
                exxdiv=None):
     cell = df_obj.cell
@@ -165,7 +161,7 @@ def get_k_kpts(df_obj, dm_kpts, hermi=1, kpts=numpy.zeros((1, 3)), kpts_band=Non
         v_kpt = v_kpt.reshape(nkpt, nip, nip)
         assert v_kpt.shape == (nkpt, nip, nip)
 
-        vks.append([xk.conj().T @ vk @ xk for xk, vk in zip(inpv_kpt, v_kpt)])
+        vks.append([x.conj().T @ v @ x for x, v in zip(inpv_kpt, v_kpt)])
 
     vks = numpy.asarray(vks).reshape(nset, nkpt, nao, nao)
     if is_zero(kpts_band):
