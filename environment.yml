@@ -1,14 +1,11 @@
-name: fftisdf
-channels:
-  - defaults
-  - conda-forge
 dependencies:
-  - python==3.10
+  - conda-forge::cmake
+  - conda-forge::compilers
   - defaults::numpy
   - defaults::scipy
-  - compilers
-  - pyfftw
+  - conda-forge::h5py
+  - conda-forge::hdf5
+  - python
   - pip
   - pip:
     - pyscf
-    - ase
