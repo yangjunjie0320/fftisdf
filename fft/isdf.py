@@ -13,13 +13,13 @@ from pyscf import lib
 from pyscf.lib import logger, current_memory
 from pyscf.lib.chkfile import load, dump
 from pyscf.lib.logger import process_clock, perf_counter
+from pyscf.lib.scipy_helper import pivoted_cholesky
 
 # pyscf.pbc
 from pyscf.pbc.df.fft import FFTDF
 from pyscf.pbc import tools as pbctools
 from pyscf.pbc.tools.pbc import fft, ifft
 from pyscf.pbc.tools.k2gamma import get_phase
-from pyscf.pbc.tools.k2gamma import kpts_to_kmesh
 
 # fft.isdf_jk
 from fft.isdf_jk import get_k_kpts, kpts_to_kmesh, spc_to_kpt, kpt_to_spc
@@ -32,51 +32,46 @@ PARENT_GRID_MAXSIZE = getattr(__config__, "isdf_parent_grid_maxsize", 10000)
 # *_full: full array, shapes as (nspc * x, nspc * x)
 # *_k1, *_k2: the k-space array at specified k-point
 
-def _eta_kpt_g0g1(ao_kpt, inpv_kpt, phase):
-    """Compute the Coulomb kernel in k-space for a given grid range."""
-    nkpt, ngrid, nao = ao_kpt.shape
-    nip = inpv_kpt.shape[1]
+def contract(f_kpt, g_kpt, phase):
+    """Contract two k-space arrays."""
+    nk, m, n = f_kpt.shape
+    l = g_kpt.shape[1]
+    assert f_kpt.shape == (nk, m, n)
+    assert g_kpt.shape == (nk, l, n)
 
-    # t_kpt = ao_kpt.conj() @ inpv_kpt.transpose(0, 2, 1)
-    t_kpt = inpv_kpt.conj() @ ao_kpt.transpose(0, 2, 1)
-    t_kpt = t_kpt.conj().reshape(nkpt, nip, ngrid)
+    t_kpt = f_kpt.conj() @ g_kpt.transpose(0, 2, 1)
+    t_kpt = t_kpt.reshape(nk, m, l)
     t_spc = kpt_to_spc(t_kpt, phase)
+
+    x_spc = t_spc * t_spc
+    x_kpt = spc_to_kpt(x_spc, phase)
+    return x_kpt
+
+# def _eta_kpt_g0g1(ao_kpt, inpv_kpt, phase):
+#     """Compute the Coulomb kernel in k-space for a given grid range."""
+#     nkpt, ngrid, nao = ao_kpt.shape
+#     nip = inpv_kpt.shape[1]
+
+#     t_kpt = inpv_kpt.conj() @ ao_kpt.transpose(0, 2, 1)
+#     t_kpt = t_kpt.conj().reshape(nkpt, nip, ngrid)
+#     t_spc = kpt_to_spc(t_kpt, phase)
     
-    eta_spc_g0g1 = t_spc ** 2
-    eta_kpt_g0g1 = spc_to_kpt(eta_spc_g0g1, phase)
+#     eta_spc_g0g1 = t_spc * t_spc
+#     eta_kpt_g0g1 = spc_to_kpt(eta_spc_g0g1, phase)
 
-    return eta_kpt_g0g1.conj()
-
-# def _coul_q(metx_q, eta_q, w_q=None, tol=1e-10):
-#     ngrid, nip = eta_q.shape
-#     assert w_q.shape == (nip, ngrid)
-
-#     kern_q = lib.dot(eta_q, w_q.conj())
-#     assert kern_q.shape == (nip, nip)
-
-#     u, s, vh = svd(metx_q, full_matrices=False)
-#     s2 = s[None, :] * s[:, None]
-#     m = abs(s2) > tol ** 2
-#     s2inv = numpy.zeros_like(s2)
-#     s2inv[m] = 1.0 / s2[m]
-
-#     coul_q = reduce(lib.dot, (u.conj().T, kern_q, u))
-#     coul_q *= s2inv
-#     coul_q = reduce(lib.dot, (vh.conj().T, coul_q, vh))
-#     return coul_q
+#     return eta_kpt_g0g1.conj()
 
 def lstsq(a, b, tol=1e-10):
-    assert numpy.allclose(a, a.conj().T)
-
     u, s, vh = svd(a, full_matrices=False)
     uh = u.conj().T
     v = vh.conj().T
     s2 = s[None, :] * s[:, None]
+    
     mask = abs(s2) > tol
-
     x = reduce(numpy.dot, (uh, b, u))
     x[mask] /= s2[mask]
     x = reduce(numpy.dot, (v, x, vh))
+
     return x
 
 def select_inpx(df_obj, g0=None, c0=None, tol=None):
@@ -85,30 +80,75 @@ def select_inpx(df_obj, g0=None, c0=None, tol=None):
     
     pcell = df_obj.cell
     nao = pcell.nao_nr()
-    ng = len(g0)
+    ng = g0.shape[0]
 
     x0 = pcell.pbc_eval_gto("GTOval", g0)
     m0 = lib.dot(x0.conj(), x0.T) ** 2
-
-    from pyscf.lib.scipy_helper import pivoted_cholesky
-    tol2 = tol ** 2
-    chol, perm, rank = pivoted_cholesky(m0, tol=tol2)
+    chol, perm, rank = pivoted_cholesky(m0, tol=tol)
 
     nip = rank
     if c0 is not None:
         nip = int(c0 * nao)
-    mask = perm[:nip]
+        mask = perm[:nip]
+        log.info("Cholesky rank = %d, c0 = %6.2f, nao = %d, nip = %d", rank, c0, nao, nip)
+    else:
+        log.info("Cholesky rank = %d, nao = %d, nip = %d", rank, nao, nip)
 
     nip = mask.shape[0]
-    s0 = numpy.sum(numpy.diag(chol)[:nip])
-    s1 = numpy.sum(numpy.diag(chol)[nip:])
+    diag = numpy.diag(chol)
+    s0 = numpy.sum(diag[:nip])
+    s1 = numpy.sum(diag[nip:])
+
     log.info("Parent grid size = %d, selected grid size = %d", ng, nip)
-    log.info("Cholesky rank = %d, truncated values = %6.2e, estimated error = %6.2e", rank, s0, s1)
+    log.info("truncated values = %6.2e, estimated error = %6.2e", s0, s1)
 
     inpx = g0[mask]
-    t1 = log.timer("interpolating functions", *t0)
+    t1 = log.timer("interpolating points", *t0)
     return inpx
 
+def build(df_obj):
+    log = logger.new_logger(df_obj, df_obj.verbose)
+    t0 = (process_clock(), perf_counter())
+    max_memory = max(2000, df_obj.max_memory - current_memory()[0])
+
+    df_obj.dump_flags()
+    df_obj.check_sanity()
+
+    cell = df_obj.cell
+    nao = cell.nao_nr()
+    tol2 = df_obj.tol ** 2
+
+    mesh = cell.mesh
+    inpx = df_obj.inpx
+    c0 = df_obj.c0
+    if inpx is None:
+        m0 = numpy.asarray(mesh)
+        if numpy.prod(m0) > PARENT_GRID_MAXSIZE:
+            f = PARENT_GRID_MAXSIZE / numpy.prod(m0)
+            m0 = numpy.floor(m0 * f ** (1/3) * 0.5)
+            m0 = (m0 * 2 + 1).astype(int)
+            log.info("Original mesh %s is too large, reduced to %s", mesh, m0)
+        g0 = cell.gen_uniform_grids(m0)
+        inpx = select_inpx(df_obj, g0=g0, c0=c0, tol=tol2)
+    else:
+        log.debug("Using pre-computed interpolating vectors, c0 is not used")
+
+    nip = inpx.shape[0]
+    assert inpx.shape == (nip, 3)
+    df_obj.inpx = inpx
+    log.debug("nip = %d, nao = %d, cisdf = %6.2f", nip, nao, nip / nao)
+
+    ngrid = df_obj.grids.coords.shape[0]
+    if df_obj.blksize is None:
+        blksize = max_memory * 1e6 * 0.2 / (nkpt * nip * 16)
+        df_obj.blksize = max(1, int(blksize))
+    df_obj.blksize = min(df_obj.blksize, ngrid)
+
+    if df_obj.blksize >= ngrid:
+        df_obj._fswap = None
+    
+    return df_obj
+    
 class InterpolativeSeparableDensityFitting(FFTDF):
     wrap_around = False
 
@@ -142,7 +182,6 @@ class InterpolativeSeparableDensityFitting(FFTDF):
     
     def build(self):
         log = logger.new_logger(self, self.verbose)
-        t0 = (process_clock(), perf_counter())
         max_memory = max(2000, self.max_memory - current_memory()[0])
 
         if self._isdf is not None:
@@ -153,70 +192,32 @@ class InterpolativeSeparableDensityFitting(FFTDF):
             self._coul_kpt = coul_kpt
             return inpv_kpt, coul_kpt
 
-        self.dump_flags()
-        self.check_sanity()
-
-        cell = self.cell
-        nao = cell.nao_nr()
-        kpts, kmesh = kpts_to_kmesh(self, self.kpts)
-        nkpt = len(kpts)
-
+        build(self)
         tol2 = self.tol ** 2
-        print("tol2 = %6.2e" % tol2)
         inpx = self.inpx
-        mesh = cell.mesh
-        if inpx is None:
-            c0 = self.c0
-            m0 = numpy.asarray(mesh)
-            if numpy.prod(m0) > PARENT_GRID_MAXSIZE:
-                f = PARENT_GRID_MAXSIZE / numpy.prod(m0)
-                m0 = numpy.floor(m0 * f ** (1/3) * 0.5).astype(int)
-                m0 = m0 * 2 + 1
-                log.info("Original mesh %s is too large, reduced to %s", mesh, m0)
-            g0 = cell.gen_uniform_grids(m0)
-            inpx = select_inpx(self, g0=g0, c0=c0, tol=tol2)
-        else:
-            log.debug("Using pre-computed interpolating vectors, c0 is not used")
-
         nip = inpx.shape[0]
         assert inpx.shape == (nip, 3)
 
         grids = self.grids
         ngrid = grids.coords.shape[0]
 
-        if self.blksize is None:
-            blksize = max_memory * 1e6 * 0.2 / (nkpt * nip * 16)
-            self.blksize = max(1, int(blksize))
-        self.blksize = min(self.blksize, ngrid)
-
-        if self.blksize >= ngrid:
-            self._fswap = None
+        kpts, kmesh = kpts_to_kmesh(self, self.kpts)
+        phase = get_phase(cell, kpts, kmesh=kmesh, wrap_around=self.wrap_around)[1]
 
         inpv_kpt = cell.pbc_eval_gto("GTOval", inpx, kpts=kpts)
         inpv_kpt = numpy.asarray(inpv_kpt, dtype=numpy.complex128)
-        assert inpv_kpt.shape == (nkpt, nip, nao)
-        log.debug("nip = %d, nao = %d, cisdf = %6.2f", nip, nao, nip / nao)
-
-        # metx_kpt: (nkpt, nip, nip), eta_kpt: (nkpt, ngrid, nip)
-        phase = get_phase(cell, kpts, kmesh=kmesh, wrap_around=self.wrap_around)[1]
-
-        # compute metrix tensor in k-space
-        t_kpt = inpv_kpt.conj() @ inpv_kpt.transpose(0, 2, 1)
-        t_kpt = t_kpt.reshape(nkpt, nip, nip)
-
-        t_spc = kpt_to_spc(t_kpt, phase)
-        metx_kpt = spc_to_kpt(t_spc * t_spc, phase)
+        metx_kpt = contract(inpv_kpt, inpv_kpt, phase)
 
         fswap = None if self._fswap is None else h5py.File(self._fswap, "w")
         if fswap is None:
-            log.debug("In-core version is used for eta_kpt.")
+            log.debug("\nIn-core version is used for eta_kpt.")
             log.debug("memory required: %6.2e GB", nkpt * nip * 16 * ngrid / 1e9)
             log.debug("max_memory: %6.2e GB", max_memory / 1e3)
         else:
-            log.debug("Out-core version is used for eta_kpt.")
+            log.debug("\nOut-core version is used for eta_kpt.")
             log.debug("disk space required: %6.2e GB.", nkpt * nip * 16 * ngrid / 1e9)
-            log.debug("memory used for each block: %6.2e GB", nkpt * nip * 16 * self.blksize / 1e9)
-            log.debug("memory used for each k-point: %6.2e GB", nip * ngrid * 16 / 1e9)
+            log.debug("memory needed for each block:   %6.2e GB", nkpt * nip * 16 * self.blksize / 1e9)
+            log.debug("memory needed for each k-point: %6.2e GB", nip * ngrid * 16 / 1e9)
             log.debug("max_memory: %6.2e GB", max_memory / 1e3)
 
         eta_kpt = None
@@ -231,15 +232,16 @@ class InterpolativeSeparableDensityFitting(FFTDF):
         for ig, (ao_etc_kpt, g0, g1) in enumerate(aoR_loop):
             t0 = (process_clock(), perf_counter())
             ao_kpt = numpy.asarray(ao_etc_kpt[0])
-            eta_kpt_g0g1 = _eta_kpt_g0g1(ao_kpt, inpv_kpt, phase)
+            eta_kpt_g0g1 = contract(ao_kpt, inpv_kpt, phase)
             eta_kpt[:, :, g0:g1] = eta_kpt_g0g1
             t1 = log.timer(info % (g0, g1), *t0)
 
-        log.debug("\nComputing coul_kpt")
-        info = (lambda s: f"coul_kpt[ %{len(s)}d / {s}]")(str(nkpt))
-
+        mesh = cell.mesh
         v0 = cell.get_Gv(mesh)
         coul_kpt = numpy.zeros((nkpt, nip, nip), dtype=numpy.complex128)
+
+        log.debug("\nComputing coul_kpt")
+        info = (lambda s: f"coul_kpt[ %{len(s)}d / {s}]")(str(nkpt))
         for q in range(nkpt):
             t0 = (process_clock(), perf_counter())
             
@@ -249,15 +251,14 @@ class InterpolativeSeparableDensityFitting(FFTDF):
             vq *= cell.vol / ngrid
 
             lhs = eta_kpt[q] * fq
-            wq  = vq * fft(lhs, mesh)
-            rhs = ifft(wq, mesh)
-            # print(lhs.shape, rhs.shape)
+            wq  = fft(lhs, mesh)
+            rhs = ifft(wq * vq, mesh)
             kern_q = lib.dot(lhs, rhs.conj().T)
 
             metx_q = metx_kpt[q]
             coul_q = lstsq(metx_q, kern_q, tol=tol2)
-            # coul_q = _coul_q(metx_q, kern_q, tol=tol)
             coul_kpt[q] = coul_q
+
             t1 = log.timer(info % (q + 1), *t0)
 
         self._coul_kpt = coul_kpt
@@ -270,7 +271,6 @@ class InterpolativeSeparableDensityFitting(FFTDF):
             dump(self._isdf, "coul_kpt", coul_kpt)
             dump(self._isdf, "inpv_kpt", inpv_kpt)
 
-        t1 = log.timer("building ISDF", *t0)
         if fswap is not None:
             fswap.close()
         return inpv_kpt, coul_kpt
@@ -360,12 +360,8 @@ if __name__ == "__main__":
 
     vv = []
     ee = []
-    cc = [None]
+    cc = [None, 5.0, 10.0, 15.0, 20.0]
     for c0 in cc:
-        from pyscf.pbc.tools.pbc import cutoff_to_mesh
-        lv = cell.lattice_vectors()
-        g0 = cell.gen_uniform_grids(cutoff_to_mesh(lv, cell.ke_cutoff))
-
         from fft import FFTISDF
         scf_obj.with_df = FFTISDF(cell, kpts=kpts)
         scf_obj.with_df.verbose = 10
