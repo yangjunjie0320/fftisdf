@@ -56,12 +56,12 @@ class TestERI7D(unittest.TestCase):
         cell.a = lv
         cell.ke_cutoff = 10.0
         cell.atom = atom
-        cell.basis = "gth-dzvp"
+        cell.basis = "gth-tzvp"
         cell.pseudo = "gth-pbe"
         cell.verbose = 0
         cell.build(dump_input=False)
 
-        kpts = cell.make_kpts([1, 1, 3])
+        kpts = cell.make_kpts([3, 3, 3])
         nkpts = len(kpts)
         nao = cell.nao_nr()
 
@@ -71,9 +71,16 @@ class TestERI7D(unittest.TestCase):
         
         import fft
         isdf = fft.ISDF(cell, kpts=kpts)
-        isdf.c0 = 20.0
-        isdf.tol = 1e-20
+        isdf.tol = 1e-10
         isdf.verbose = 5
+
+        k0 = 10.0
+        m0 = cell.cutoff_to_mesh(k0)
+        g0 = cell.gen_uniform_grids(m0)
+        print(f"m0 = {m0}, g0.shape = {g0.shape}")
+        inpx = fft.isdf.select_inpx(isdf, g0=g0, c0=None, tol=1e-16, kpts=kpts)
+        print(f"inpx.shape = {inpx.shape}")
+        isdf.inpx = inpx
         isdf.build()
 
         # eri_ao_7d_sol = isdf.get_ao_eri_7d(kpts=kpts)
@@ -85,7 +92,9 @@ class TestERI7D(unittest.TestCase):
             eri_ao_ref = df.get_ao_eri([kpts[ki], kpts[kj], kpts[kk], kpts[km]], compact=False)
             eri_ao_sol = isdf.get_ao_eri([kpts[ki], kpts[kj], kpts[kk], kpts[km]], compact=False)
 
-            is_close = numpy.allclose(eri_ao_sol, eri_ao_ref, atol=1e-4)
+            err = abs(eri_ao_sol - eri_ao_ref).max()
+            print(f"ki={ki}, kj={kj}, kk={kk}, km={km}, err = {err:6.2e}")
+            is_close = err < 1e-4
             self.assertTrue(is_close)
 
 if __name__ == "__main__":
