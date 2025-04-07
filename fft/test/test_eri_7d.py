@@ -78,7 +78,7 @@ class TestERI7D(unittest.TestCase):
         m0 = cell.cutoff_to_mesh(k0)
         g0 = cell.gen_uniform_grids(m0)
         print(f"m0 = {m0}, g0.shape = {g0.shape}")
-        inpx = fft.isdf.select_inpx(isdf, g0=g0, c0=None, tol=1e-16, kpts=kpts)
+        inpx = fft.isdf.select_inpx(isdf, g0=g0, c0=40.0, tol=1e-16, kpts=kpts)
         print(f"inpx.shape = {inpx.shape}")
         isdf.inpx = inpx
         isdf.build()
