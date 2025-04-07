@@ -1,9 +1,12 @@
-import numpy
+import unittest
+
+import numpy, scipy
+
 import pyscf
 import pyscf.pbc
 import pyscf.pbc.gto
 
-class TestERI7D:
+class TestERI7D(unittest.TestCase):
     def test_fftdf_ao2mo_7d(self):
         a = 3.0
         lv = numpy.diag([a, a, a * 2])
@@ -40,9 +43,8 @@ class TestERI7D:
 
             eri_ao_sol = eri_ao_7d_sol[ki, kj, kk]
             eri_ao_sol = eri_ao_sol.reshape(*eri_ao_ref.shape)
-
-            err = abs(eri_ao_sol - eri_ao_ref).max()
-            assert err < 1e-10
+            is_close = numpy.allclose(eri_ao_sol, eri_ao_ref, atol=1e-10)
+            self.assertTrue(is_close)
 
     def test_get_ao_eri_7d(self):
         a = 3.0
@@ -83,10 +85,8 @@ class TestERI7D:
             eri_ao_ref = df.get_ao_eri([kpts[ki], kpts[kj], kpts[kk], kpts[km]], compact=False)
             eri_ao_sol = isdf.get_ao_eri([kpts[ki], kpts[kj], kpts[kk], kpts[km]], compact=False)
 
-            err = abs(eri_ao_sol - eri_ao_ref).max()
-            print(f"\nki={ki:2d}, kj={kj:2d}, kk={kk:2d}, err={err:6.2e}")            
-            assert err < 1e-4
-
+            is_close = numpy.allclose(eri_ao_sol, eri_ao_ref, atol=1e-4)
+            self.assertTrue(is_close)
 
 if __name__ == "__main__":
     t = TestERI7D()

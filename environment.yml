@@ -10,3 +10,4 @@ dependencies:
   - pip:
     - pyscf
     - line_profiler
+    - unittest
