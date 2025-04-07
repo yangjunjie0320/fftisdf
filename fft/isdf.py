@@ -20,6 +20,7 @@ from pyscf.pbc.df.fft import FFTDF
 from pyscf.pbc import tools as pbctools
 from pyscf.pbc.tools.pbc import fft, ifft
 from pyscf.pbc.tools.k2gamma import get_phase
+from pyscf.pbc.lib import kpts_helper
 
 # fft.isdf_jk
 from fft.isdf_jk import get_k_kpts, kpts_to_kmesh, spc_to_kpt, kpt_to_spc
@@ -46,6 +47,11 @@ def contract(f_kpt, g_kpt, phase):
     x_spc = t_spc * t_spc
     x_kpt = spc_to_kpt(x_spc, phase)
     return x_kpt
+
+def member(kpt, kpts):
+    ind = kpts_helper.member(kpt, kpts)
+    assert len(ind) == 1, f"search for {kpt} in {kpts} returns {ind}"
+    return ind[0]
 
 def lstsq(a, b, tol=1e-10):
     u, s, vh = svd(a, full_matrices=False)
@@ -133,6 +139,10 @@ def build(df_obj, tol=1e-10):
 
     if df_obj.blksize >= ngrid:
         df_obj._fswap = None
+
+    inpv_kpt = cell.pbc_eval_gto("GTOval", inpx, kpts=kpts)
+    inpv_kpt = numpy.asarray(inpv_kpt, dtype=numpy.complex128)
+    df_obj._inpv_kpt = inpv_kpt
     
     return df_obj
     
@@ -172,6 +182,7 @@ class InterpolativeSeparableDensityFitting(FFTDF):
         log = logger.new_logger(self, self.verbose)
         max_memory = max(2000, self.max_memory - current_memory()[0])
 
+        # If a pre-computed ISDF is available, load it
         if self._isdf is not None:
             log.info("Loading ISDF results from %s, skipping build", self._isdf)
             inpv_kpt = load(self._isdf, "inpv_kpt")
@@ -182,23 +193,16 @@ class InterpolativeSeparableDensityFitting(FFTDF):
 
         tol = self.tol
         build(self, tol=tol)
-        
-        inpx = self.inpx
-        nip = inpx.shape[0]
-        assert inpx.shape == (nip, 3)
 
         grids = self.grids
         ngrid = grids.coords.shape[0]
 
-        cell = self.cell
-        kpts, kmesh = kpts_to_kmesh(self, self.kpts)
-        phase = get_phase(cell, kpts, kmesh=kmesh, wrap_around=self.wrap_around)[1]
-        nkpt = kpts.shape[0]
+        # [Step 1]: read the pre-computed interpolating functions
+        # inpv_kpt is a (nkpt, nip, nao) array
+        inpv_kpt = self._inpv_kpt
+        nkpt, nip, nao = inpv_kpt.shape
 
-        inpv_kpt = cell.pbc_eval_gto("GTOval", inpx, kpts=kpts)
-        inpv_kpt = numpy.asarray(inpv_kpt, dtype=numpy.complex128)
-        metx_kpt = contract(inpv_kpt, inpv_kpt, phase)
-
+        # Setup the scratch file for eta_kpt if needed
         fswap = None if self._fswap is None else h5py.File(self._fswap, "w")
         if fswap is None:
             log.debug("\nIn-core version is used for eta_kpt.")
@@ -211,6 +215,20 @@ class InterpolativeSeparableDensityFitting(FFTDF):
             log.debug("memory needed for each k-point: %6.2e GB", nip * ngrid * 16 / 1e9)
             log.debug("max_memory: %6.2e GB", max_memory / 1e3)
 
+        cell = self.cell
+        mesh = cell.mesh
+        v0 = cell.get_Gv(mesh)
+
+        kpts, kmesh = kpts_to_kmesh(self, self.kpts)
+        phase = get_phase(cell, kpts, kmesh=kmesh, wrap_around=self.wrap_around)[1]
+
+        # [Step 2]: compute the metric tensor,
+        # metx_kpt is a (nkpt, nip, nip) array
+        metx_kpt = contract(inpv_kpt, inpv_kpt, phase)
+        assert metx_kpt.shape == (nkpt, nip, nip)
+
+        # [Step 3]: compute the right-hand side of the least-square fitting
+        # eta_kpt is a (nkpt, nip, ngrid) array
         eta_kpt = None
         if fswap is not None:
             eta_kpt = fswap.create_dataset("eta_kpt", shape=(nkpt, nip, ngrid), dtype=numpy.complex128)
@@ -227,8 +245,8 @@ class InterpolativeSeparableDensityFitting(FFTDF):
             eta_kpt[:, :, g0:g1] = eta_kpt_g0g1
             t1 = log.timer(info % (g0, g1), *t0)
 
-        mesh = cell.mesh
-        v0 = cell.get_Gv(mesh)
+        # [Step 4]: compute the Coulomb kernel,
+        # coul_kpt is a (nkpt, nip, nip) array
         coul_kpt = numpy.zeros((nkpt, nip, nip), dtype=numpy.complex128)
 
         log.debug("\nComputing coul_kpt")
@@ -252,18 +270,23 @@ class InterpolativeSeparableDensityFitting(FFTDF):
 
             t1 = log.timer(info % (q + 1), *t0)
 
-        self._coul_kpt = coul_kpt
         self._inpv_kpt = inpv_kpt
+        self._coul_kpt = coul_kpt
 
         if self._isdf_to_save is not None:
             self._isdf = self._isdf_to_save
 
+        if fswap is not None:
+            fswap.close()
+
+        if self._isdf is None and self._fswap is not None:
+            self._isdf = self._fswap
+
         if self._isdf is not None:
             dump(self._isdf, "coul_kpt", coul_kpt)
             dump(self._isdf, "inpv_kpt", inpv_kpt)
+            log.info("ISDF results are saved to %s", self._isdf)
 
-        if fswap is not None:
-            fswap.close()
         return inpv_kpt, coul_kpt
 
     
@@ -316,13 +339,82 @@ class InterpolativeSeparableDensityFitting(FFTDF):
             vj = get_j_kpts(self, dm, hermi, kpts, kpts_band)
 
         return vj, vk
+    
+    def get_ao_eri(self, kpts, compact=False):
+        cell = self.cell
+        from pyscf.pbc.lib.kpts_helper import get_kconserv, get_kconserv_ria
+        from pyscf.pbc.lib.kpts_helper import loop_kkk
+        kconserv2 = get_kconserv_ria(cell, self.kpts)
+        kconserv3 = get_kconserv(cell, self.kpts)
+
+        km, kn, kl, ks = [member(kpt, self.kpts) for kpt in kpts]
+        is_conserved = (kconserv3[km, kn, kl] == ks)
+        if not is_conserved:
+            raise ValueError("kpts are not conserved")
+        
+        kq = kconserv2[km, kn]
+        jq = self._coul_kpt[kq]
+
+        inpv_kpt = self._inpv_kpt
+        nkpt, nip, nao = inpv_kpt.shape
+        nao2 = nao * nao
+        rho_mn = inpv_kpt[km].conj().reshape(-1, nao, 1) * inpv_kpt[kn].reshape(-1, 1, nao)
+        rho_mn = rho_mn.reshape(-1, nao2)
+
+        rho_ls = inpv_kpt[kl].conj().reshape(-1, nao, 1) * inpv_kpt[ks].reshape(-1, 1, nao)
+        rho_ls = rho_ls.reshape(-1, nao2)
+
+        vq = lib.dot(rho_mn.T, jq)
+        eri_ao = lib.dot(vq, rho_ls)
+        return eri_ao
+        
+    
+
+    def get_ao_eri_7d(self, kpts=None):
+        if kpts is None:
+            kpts = self.kpts
+        kpts = numpy.asarray(kpts)
+        
+        # make sure kpts is identical to self.kpts
+        assert numpy.all(kpts == self.kpts)
+
+        # get the Coulomb kernel
+        inpv_kpt = self._inpv_kpt
+        coul_kpt = self._coul_kpt
+        nkpt, nip, nao = inpv_kpt.shape
+
+        nao2 = nao * nao
+        shape = (nkpt, ) * 3 + (nao2, ) * 2
+        eri_ao_7d = numpy.zeros(shape, dtype=numpy.complex128)
+
+        cell = self.cell
+        from pyscf.pbc.lib.kpts_helper import get_kconserv, get_kconserv_ria
+        from pyscf.pbc.lib.kpts_helper import loop_kkk
+        kconserv2 = get_kconserv_ria(cell, kpts)
+        kconserv3 = get_kconserv(cell, kpts)
+
+        for km, kn, kl in loop_kkk(nkpt):
+            ks = kconserv3[km, kn, kl]
+            kq = kconserv2[km, kn]
+
+            rho_mn = inpv_kpt[km].conj().reshape(-1, nao, 1) * inpv_kpt[kn].reshape(-1, 1, nao)
+            rho_mn = rho_mn.reshape(-1, nao2)
+
+            rho_ls = inpv_kpt[kl].conj().reshape(-1, nao, 1) * inpv_kpt[ks].reshape(-1, 1, nao)
+            rho_ls = rho_ls.reshape(-1, nao2)
+
+            jq = coul_kpt[kq]
+            vq = lib.dot(rho_mn.T, jq)
+            eri_ao_7d[km, kn, kl] = lib.dot(vq, rho_ls)
+        
+        return eri_ao_7d
+        
 
 ISDF = FFTISDF = InterpolativeSeparableDensityFitting
 
 if __name__ == "__main__":
     a = 1.7834
-    lv  = numpy.ones((3, 3)) * a
-    lv[numpy.diag_indices(3)] *= 0.0
+    lv = a * (numpy.ones((3, 3)) - numpy.eye(3))
 
     atom  = [['C', (0.0000,     0.0000,   0.0000)]]
     atom += [['C', (a / 2, a / 2, a / 2)]]
@@ -351,7 +443,7 @@ if __name__ == "__main__":
 
     vv = []
     ee = []
-    cc = [10.0, 20.0, 40.0, None]
+    cc = [10.0, 20.0, 30.0, 40.0, None]
     for c0 in cc:
         from fft import FFTISDF
         scf_obj.with_df = FFTISDF(cell, kpts=kpts)

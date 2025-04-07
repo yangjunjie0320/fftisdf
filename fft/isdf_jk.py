@@ -11,6 +11,8 @@ from pyscf.pbc.df.df_jk import _format_dms, _format_kpts_band, _format_jks
 PYSCF_MAX_MEMORY = int(os.environ.get("PYSCF_MAX_MEMORY", 2000))
 
 def kpts_to_kmesh(df_obj, kpts):
+    if not isinstance(kpts, numpy.ndarray):
+        kpts = numpy.asarray(kpts.kpts)
     kmesh = pyscf_kpts_to_kmesh(df_obj.cell, kpts)
     assert numpy.allclose(kpts, df_obj.cell.get_kpts(kmesh))
     return kpts, kmesh
