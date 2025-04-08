@@ -1,4 +1,5 @@
 import os, sys, h5py
+from itertools import product
 from functools import reduce
 
 import numpy, scipy
@@ -66,27 +67,26 @@ def lstsq(a, b, tol=1e-10):
 
     return x
 
-def select_inpx(df_obj, g0=None, c0=None, kpts=None, tol=None):
+def select_inpx(df_obj, g0=None, c0=None, kpts=None, tol=1e-10):
     log = logger.new_logger(df_obj, df_obj.verbose)
     t0 = (process_clock(), perf_counter())
     
-    pcell = df_obj.cell
-    nao = pcell.nao_nr()
+    cell = df_obj.cell
+    nao = cell.nao_nr()
     ng = g0.shape[0]
 
-    kpts, kmesh = kpts_to_kmesh(df_obj, kpts)
-    phase = get_phase(pcell, kpts, kmesh=kmesh, wrap_around=df_obj.wrap_around)[1]
+    if kpts is None:
+        kpts = numpy.zeros((1, 3))
 
     m0 = numpy.zeros((ng, ng), dtype=numpy.complex128)
     for kpt in kpts:
-        x0 = pcell.pbc_eval_gto("GTOval", g0, kpts=kpt)
-        x0 = numpy.asarray(x0, dtype=numpy.complex128)
+        x0 = cell.pbc_eval_gto("GTOval", g0, kpts=kpt)
         m0 += lib.dot(x0.conj(), x0.T) ** 2
-
     m0 = m0.real
-    chol, perm, rank = pivoted_cholesky(m0, tol=tol)
 
+    chol, perm, rank = pivoted_cholesky(m0, tol=tol)
     nip = rank
+
     if c0 is not None:
         nip = int(c0 * nao)
         log.info("Cholesky rank = %d, c0 = %6.2f, nao = %d, nip = %d", rank, c0, nao, nip)
@@ -184,6 +184,8 @@ class InterpolativeSeparableDensityFitting(FFTDF):
         log.info("len(kpts) = %d", len(self.kpts))
         log.info("tol = %s", self.tol)
         return self
+
+    select_inpx = select_inpx
     
     def build(self):
         log = logger.new_logger(self, self.verbose)
@@ -254,39 +256,6 @@ class InterpolativeSeparableDensityFitting(FFTDF):
 
         # [Step 4]: compute the Coulomb kernel,
         # coul_kpt is a (nkpt, nip, nip) array
-        xi_kpt = []
-        for q in range(nkpt):
-            mq = metx_kpt[q]
-            yq = eta_kpt[q]
-            res = scipy.linalg.lstsq(mq, yq)
-            xq = res[0]
-            err = abs(mq @ xq - yq).max()
-            print(f"q = {q}, err = {err:6.2e}")
-            if q == 0:
-                ao_kpt = cell.pbc_eval_gto("GTOval", grids.coords, kpts=kpts[q])
-                phi = ao_kpt
-                print(f"phi.shape = {phi.shape}")
-                rho_sol = numpy.einsum("Ig,Im,In->gmn", xq, inpv_kpt[q], inpv_kpt[q], optimize=True)
-                rho_sol = rho_sol.reshape(ngrid, nao * nao)
-                rho_ref = numpy.einsum("gm,gn->gmn", phi, phi, optimize=True)
-                rho_ref = rho_ref.reshape(ngrid, nao * nao)
-
-                print("rho_sol = ")
-                numpy.savetxt(self.stdout, rho_sol[:10, :10].real, fmt="% 6.4e", delimiter=", ")
-                print("\nrho_ref = ")
-                numpy.savetxt(self.stdout, rho_ref[:10, :10].real, fmt="% 6.4e", delimiter=", ")
-                err = abs(rho_sol - rho_ref).max()
-                print(f"err = {err:6.2e}")
-                # find out the indices of the largest elements in rho_sol
-                for ix in numpy.argsort(abs(rho_sol - rho_ref).flatten())[::-1][:10]:
-                    ix = numpy.unravel_index(ix, rho_sol.shape)
-                    rho_sol_ix = rho_sol[ix].real
-                    rho_ref_ix = rho_ref[ix].real
-                    err_ix = abs(rho_sol_ix - rho_ref_ix)
-                    # err_ix /= abs(rho_ref_ix).max()
-                    print(f"ix = {ix}, rho_sol[ix] = {rho_sol_ix:6.4e}, rho_ref[ix] = {rho_ref_ix:6.4e}, err = {err_ix:6.2e}")
-                assert 1 == 2
-
         coul_kpt = numpy.zeros((nkpt, nip, nip), dtype=numpy.complex128)
 
         log.debug("\nComputing coul_kpt")
@@ -363,7 +332,6 @@ class InterpolativeSeparableDensityFitting(FFTDF):
             p0, p1 = p1, p1 + coords.shape[0]
             yield ao_etc_kpt, p0, p1
     
-    
     def get_jk(self, dm, hermi=1, kpts=None, kpts_band=None,
                with_j=True, with_k=True, omega=None, exxdiv=None):
         
@@ -391,6 +359,8 @@ class InterpolativeSeparableDensityFitting(FFTDF):
         is_conserved = (kconserv3[km, kn, kl] == ks)
         if not is_conserved:
             raise ValueError("kpts are not conserved")
+
+        assert compact is False
         
         kq = kconserv2[km, kn]
         jq = self._coul_kpt[kq]
@@ -407,15 +377,12 @@ class InterpolativeSeparableDensityFitting(FFTDF):
         vq = lib.dot(rho_mn.T, jq)
         eri_ao = lib.dot(vq, rho_ls)
         return eri_ao
-        
-    
 
-    def get_ao_eri_7d(self, kpts=None):
+    def ao2mo_7d(self, mo_coeff_kpts, kpts=None):
         if kpts is None:
             kpts = self.kpts
+
         kpts = numpy.asarray(kpts)
-        
-        # make sure kpts is identical to self.kpts
         assert numpy.all(kpts == self.kpts)
 
         # get the Coulomb kernel
@@ -423,31 +390,35 @@ class InterpolativeSeparableDensityFitting(FFTDF):
         coul_kpt = self._coul_kpt
         nkpt, nip, nao = inpv_kpt.shape
 
-        nao2 = nao * nao
-        shape = (nkpt, ) * 3 + (nao2, ) * 2
-        eri_ao_7d = numpy.zeros(shape, dtype=numpy.complex128)
+        nmo = mo_coeff_kpts.shape[2]
+        assert mo_coeff_kpts.shape == (nkpt, nao, nmo)
+
+        nmo2 = nmo * nmo
+        shape = (nkpt, ) * 3 + (nmo2, ) * 2
+        eri_7d = numpy.zeros(shape, dtype=numpy.complex128)
 
         cell = self.cell
         from pyscf.pbc.lib.kpts_helper import get_kconserv, get_kconserv_ria
-        from pyscf.pbc.lib.kpts_helper import loop_kkk
         kconserv2 = get_kconserv_ria(cell, kpts)
         kconserv3 = get_kconserv(cell, kpts)
 
-        for km, kn, kl in loop_kkk(nkpt):
-            ks = kconserv3[km, kn, kl]
+        inpv_kpt = numpy.einsum("kIm,kmp->kIp", self._inpv_kpt, mo_coeff_kpts)
+
+        for km, kn in product(range(nkpt), repeat=2):
             kq = kconserv2[km, kn]
-
-            rho_mn = inpv_kpt[km].conj().reshape(-1, nao, 1) * inpv_kpt[kn].reshape(-1, 1, nao)
-            rho_mn = rho_mn.reshape(-1, nao2)
-
-            rho_ls = inpv_kpt[kl].conj().reshape(-1, nao, 1) * inpv_kpt[ks].reshape(-1, 1, nao)
-            rho_ls = rho_ls.reshape(-1, nao2)
-
             jq = coul_kpt[kq]
+
+            rho_mn = inpv_kpt[km].conj().reshape(-1, nmo, 1) * inpv_kpt[kn].reshape(-1, 1, nmo)
+            rho_mn = rho_mn.reshape(-1, nmo2)
             vq = lib.dot(rho_mn.T, jq)
-            eri_ao_7d[km, kn, kl] = lib.dot(vq, rho_ls)
+
+            for kl in range(nkpt):
+                ks = kconserv3[km, kn, kl]
+                rho_ls = inpv_kpt[kl].conj().reshape(-1, nmo, 1) * inpv_kpt[ks].reshape(-1, 1, nmo)
+                rho_ls = rho_ls.reshape(-1, nmo2)
+                eri_7d[km, kn, kl] = lib.dot(vq, rho_ls)
         
-        return eri_ao_7d
+        return eri_7d
         
 
 ISDF = FFTISDF = InterpolativeSeparableDensityFitting
