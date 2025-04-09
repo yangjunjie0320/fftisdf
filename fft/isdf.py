@@ -92,6 +92,7 @@ def select_inpx(df_obj, g0=None, c0=None, kpts=None, tol=1e-10):
         log.info("Cholesky rank = %d, c0 = %6.2f, nao = %d, nip = %d", rank, c0, nao, nip)
     else:
         log.info("Cholesky rank = %d, nao = %d, nip = %d", rank, nao, nip)
+        log.info("Using all Cholesky vectors as interpolating points.")
 
     mask = perm[:nip]
     diag = numpy.diag(chol)
