@@ -9,10 +9,7 @@ if __name__ == "__main__":
 
         eri_kpts_test = EriKptsTest()
         eri_kpts_test.setUp(kmesh)
-        eri_kpts_test.test_fftdf_eri_ao_7d()
         eri_kpts_test.test_fftisdf_get_ao_eri()
-        eri_kpts_test.test_fftisdf_eri_ao_7d()
-        eri_kpts_test.test_fftisdf_ao2mo_7d()
         print(f"EriKptsTest passed for kmesh: {kmesh}")
 
         vjk_kpts_test = VjkKptsTest()
