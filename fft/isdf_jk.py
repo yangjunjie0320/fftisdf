@@ -14,7 +14,8 @@ def kpts_to_kmesh(df_obj, kpts):
     if not isinstance(kpts, numpy.ndarray):
         kpts = numpy.asarray(kpts.kpts)
     kmesh = pyscf_kpts_to_kmesh(df_obj.cell, kpts)
-    assert numpy.allclose(kpts, df_obj.cell.get_kpts(kmesh))
+    wrap_around = df_obj.wrap_around
+    assert numpy.allclose(kpts, df_obj.cell.get_kpts(kmesh, wrap_around=wrap_around))
     return kpts, kmesh
 
 def spc_to_kpt(m_spc, phase):

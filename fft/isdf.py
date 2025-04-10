@@ -131,6 +131,7 @@ def build(df_obj, tol=1e-10):
         inpx = select_inpx(df_obj, g0=g0, c0=c0, tol=tol)
     else:
         log.debug("Using pre-computed interpolating vectors, c0 is not used")
+    df_obj.inpx = inpx
 
     nip = inpx.shape[0]
     assert inpx.shape == (nip, 3)
