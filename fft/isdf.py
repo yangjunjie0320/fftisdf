@@ -126,7 +126,7 @@ def build(df_obj, tol=1e-10):
             f = PARENT_GRID_MAXSIZE / numpy.prod(m0)
             m0 = numpy.floor(m0 * f ** (1/3) * 0.5)
             m0 = (m0 * 2 + 1).astype(int)
-            log.info("Original mesh %s is too large, reduced to %s", mesh, m0)
+            log.info("Original mesh %s is too large, reduced to %s as parent grid.", mesh, m0)
         g0 = cell.gen_uniform_grids(m0)
         inpx = select_inpx(df_obj, g0=g0, c0=c0, tol=tol)
     else:
