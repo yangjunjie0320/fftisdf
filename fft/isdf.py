@@ -17,9 +17,11 @@ from pyscf.lib.logger import process_clock, perf_counter
 from pyscf.lib.scipy_helper import pivoted_cholesky
 
 # pyscf.pbc
-from pyscf.pbc.df.fft import FFTDF
 from pyscf.pbc import tools as pbctools
 from pyscf.pbc.tools.pbc import fft, ifft
+
+from pyscf.pbc.df.aft import _check_kpts
+from pyscf.pbc.df.fft import FFTDF
 
 from fft.isdf_jk import get_k_kpts
 from fft.isdf_jk import get_phase, kpts_to_kmesh
@@ -109,7 +111,10 @@ def build(df_obj, tol=1e-10):
     df_obj.check_sanity()
 
     cell = df_obj.cell
-    nao = cell.nao_nr()
+    wrap_around = df_obj.wrap_around
+    kpts, kmesh = kpts_to_kmesh(cell, df_obj.kpts, wrap_around)
+    phase = get_phase(cell, kpts, kmesh, wrap_around)[1]
+    nkpt = kpts.shape[0]
 
     mesh = cell.mesh
     inpx = df_obj.inpx
@@ -130,12 +135,6 @@ def build(df_obj, tol=1e-10):
     nip = inpx.shape[0]
     assert inpx.shape == (nip, 3)
     df_obj.inpx = inpx
-
-    wrap_around = df_obj.wrap_around
-    kpts, kmesh = kpts_to_kmesh(cell, df_obj.kpts, wrap_around)
-    phase = get_phase(cell, kpts, kmesh, wrap_around)[1]
-    
-    nkpt = kpts.shape[0]
     ngrid = df_obj.grids.coords.shape[0]
 
     if df_obj.blksize is None:
@@ -336,7 +335,6 @@ class InterpolativeSeparableDensityFitting(FFTDF):
                with_j=True, with_k=True, omega=None, exxdiv=None):
         
         assert omega is None and exxdiv is None
-        from pyscf.pbc.df.aft import _check_kpts
         kpts, is_single_kpt = _check_kpts(self, kpts)
 
         vj = vk = None

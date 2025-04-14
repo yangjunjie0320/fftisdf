@@ -55,7 +55,6 @@ def get_j_kpts(df_obj, dm_kpts, hermi=1, kpts=numpy.zeros((1, 3)), kpts_band=Non
     assert cell.low_dim_ft_type != 'inf_vacuum'
     assert cell.dimension > 1
 
-    cell = df_obj.cell
     kpts = numpy.asarray(kpts)
     assert numpy.all(kpts == df_obj.kpts)
 
