@@ -108,25 +108,24 @@ def ao2mo_spc(df_obj, mo_coeff_kpts, kpts=None):
 
     # get the Coulomb kernel
     nkpt, nao, nmo = mo_coeff_kpts.shape
-    # inpv_kpt = df_obj._inpv_kpt @ mo_coeff_kpts
-    inpv_kpt = numpy.einsum("kIm,kmp->kIp", df_obj._inpv_kpt, mo_coeff_kpts)
+    inpv_kpt = df_obj._inpv_kpt @ mo_coeff_kpts
+    # inpv_kpt = numpy.einsum("kIm,kmp->kIp", df_obj._inpv_kpt, mo_coeff_kpts)
+    # inpv_kpt = inpv_kpt.reshape(nkpt, nip, nmo)
     coul_kpt = df_obj._coul_kpt
 
     nip = inpv_kpt.shape[1]
-    # inpv_kpt = inpv_kpt.reshape(nkpt, -1)
-    # inpv_spc = kpt_to_spc(inpv_kpt, phase)
-    inpv_spc = numpy.einsum("kIp,Rk->RIp", inpv_kpt, phase)
+    inpv_kpt = inpv_kpt.reshape(nkpt, -1)
+    inpv_spc = kpt_to_spc(inpv_kpt, phase)
+    # inpv_spc = numpy.einsum("kIp,Rk->RIp", inpv_kpt, phase)
     inpv_spc *= numpy.sqrt(nspc)
 
-    # inpv_spc = inpv_spc.reshape(nspc * nip, nmo)
-    # rho_spc = inpv_spc.reshape(-1, nmo, 1) * inpv_spc.reshape(-1, 1, nmo)
-    rho_spc = numpy.einsum("RIp,RIq->RIpq", inpv_spc, inpv_spc, optimize=True)
-    rho_kpt = numpy.einsum("RIpq,Rk->kIpq", rho_spc, phase, optimize=True)
-
-    # nmo2 = nmo * nmo
-    # rho_spc = rho_spc.reshape(nspc, nip, nmo2)
-    # rho_kpt = spc_to_kpt(rho_spc, phase)
-    # rho_kpt = rho_kpt.reshape(nkpt, nip, nmo2)
+    inpv_spc = inpv_spc.reshape(nspc * nip, nmo)
+    rho_spc = inpv_spc.reshape(-1, nmo, 1) * inpv_spc.reshape(-1, 1, nmo)
+    
+    nmo2 = nmo * nmo
+    rho_spc = rho_spc.reshape(nspc, nip, nmo2)
+    rho_kpt = spc_to_kpt(rho_spc, phase)
+    rho_kpt = rho_kpt.reshape(nkpt, nip, nmo2)
 
     eri_spc = numpy.zeros((nmo, nmo, nmo, nmo))
     for q in range(nkpt):
