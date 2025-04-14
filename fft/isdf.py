@@ -21,7 +21,10 @@ from pyscf.pbc.df.fft import FFTDF
 from pyscf.pbc import tools as pbctools
 from pyscf.pbc.tools.pbc import fft, ifft
 from pyscf.pbc.tools.k2gamma import get_phase
+
 from pyscf.pbc.lib import kpts_helper
+from pyscf.pbc.lib.kpts_helper import get_kconserv
+from pyscf.pbc.lib.kpts_helper import get_kconserv_ria
 
 # fft.isdf_jk
 from fft.isdf_jk import get_k_kpts, kpts_to_kmesh, spc_to_kpt, kpt_to_spc
@@ -48,11 +51,6 @@ def contract(f_kpt, g_kpt, phase):
     x_spc = t_spc * t_spc
     x_kpt = spc_to_kpt(x_spc, phase)
     return x_kpt
-
-def member(kpt, kpts):
-    ind = kpts_helper.member(kpt, kpts)
-    assert len(ind) == 1, f"search for {kpt} in {kpts} returns {ind}"
-    return ind[0]
 
 def lstsq(a, b, tol=1e-10):
     u, s, vh = svd(a, full_matrices=False)
@@ -349,78 +347,7 @@ class InterpolativeSeparableDensityFitting(FFTDF):
             vj = get_j_kpts(self, dm, hermi, kpts, kpts_band)
 
         return vj, vk
-    
-    def get_ao_eri(self, kpts, compact=False):
-        cell = self.cell
-        from pyscf.pbc.lib.kpts_helper import get_kconserv, get_kconserv_ria
-        from pyscf.pbc.lib.kpts_helper import loop_kkk
-        kconserv2 = get_kconserv_ria(cell, self.kpts)
-        kconserv3 = get_kconserv(cell, self.kpts)
 
-        km, kn, kl, ks = [member(kpt, self.kpts) for kpt in kpts]
-        is_conserved = (kconserv3[km, kn, kl] == ks)
-        if not is_conserved:
-            raise ValueError("kpts are not conserved")
-
-        assert compact is False
-        
-        kq = kconserv2[km, kn]
-        jq = self._coul_kpt[kq]
-
-        inpv_kpt = self._inpv_kpt
-        nkpt, nip, nao = inpv_kpt.shape
-        nao2 = nao * nao
-        rho_mn = inpv_kpt[km].conj().reshape(-1, nao, 1) * inpv_kpt[kn].reshape(-1, 1, nao)
-        rho_mn = rho_mn.reshape(-1, nao2)
-
-        rho_ls = inpv_kpt[kl].conj().reshape(-1, nao, 1) * inpv_kpt[ks].reshape(-1, 1, nao)
-        rho_ls = rho_ls.reshape(-1, nao2)
-
-        vq = lib.dot(rho_mn.T, jq)
-        eri_ao = lib.dot(vq, rho_ls)
-        return eri_ao
-
-    def ao2mo_7d(self, mo_coeff_kpts, kpts=None):
-        if kpts is None:
-            kpts = self.kpts
-
-        kpts = numpy.asarray(kpts)
-        assert numpy.all(kpts == self.kpts)
-
-        # get the Coulomb kernel
-        inpv_kpt = self._inpv_kpt
-        coul_kpt = self._coul_kpt
-        nkpt, nip, nao = inpv_kpt.shape
-
-        nmo = mo_coeff_kpts.shape[2]
-        assert mo_coeff_kpts.shape == (nkpt, nao, nmo)
-
-        nmo2 = nmo * nmo
-        shape = (nkpt, ) * 3 + (nmo2, ) * 2
-        eri_7d = numpy.zeros(shape, dtype=numpy.complex128)
-
-        cell = self.cell
-        from pyscf.pbc.lib.kpts_helper import get_kconserv, get_kconserv_ria
-        kconserv2 = get_kconserv_ria(cell, kpts)
-        kconserv3 = get_kconserv(cell, kpts)
-
-        inpv_kpt = numpy.einsum("kIm,kmp->kIp", self._inpv_kpt, mo_coeff_kpts)
-
-        for km, kn in product(range(nkpt), repeat=2):
-            kq = kconserv2[km, kn]
-            jq = coul_kpt[kq]
-
-            rho_mn = inpv_kpt[km].conj().reshape(-1, nmo, 1) * inpv_kpt[kn].reshape(-1, 1, nmo)
-            rho_mn = rho_mn.reshape(-1, nmo2)
-            vq = lib.dot(rho_mn.T, jq)
-
-            for kl in range(nkpt):
-                ks = kconserv3[km, kn, kl]
-                rho_ls = inpv_kpt[kl].conj().reshape(-1, nmo, 1) * inpv_kpt[ks].reshape(-1, 1, nmo)
-                rho_ls = rho_ls.reshape(-1, nmo2)
-                eri_7d[km, kn, kl] = lib.dot(vq, rho_ls)
-        
-        return eri_7d
         
 
 ISDF = FFTISDF = InterpolativeSeparableDensityFitting

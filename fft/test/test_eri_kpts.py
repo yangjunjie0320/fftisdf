@@ -4,6 +4,7 @@ import numpy, pyscf
 from pyscf import pbc
 
 import fft
+import fft.isdf_ao2mo
 
 class EriKptsTest(unittest.TestCase):
     cell = None
