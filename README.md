@@ -41,6 +41,14 @@ python examples/01-diamond-rks.py
 ```
 
 ## Test
+The unit tests are provided in the `fft/test` directory. Install `pytest`
+before running the tests.
+
+```bash
+pip install pytest
+```
+
+Then run the tests.
 
 ```bash
 pytest
