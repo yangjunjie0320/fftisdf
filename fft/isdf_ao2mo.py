@@ -6,6 +6,7 @@ from pyscf.pbc.lib.kpts_helper import get_kconserv
 from pyscf.pbc.lib.kpts_helper import get_kconserv_ria
 
 import fft
+from fft.isdf_jk import kpts_to_kmesh, get_phase
 
 def member(kpt, kpts):
     ind = kpts_helper.member(kpt, kpts)
@@ -47,8 +48,13 @@ def ao2mo_7d(df_obj, mo_coeff_kpts, kpts=None):
     if kpts is None:
         kpts = df_obj.kpts
 
+    pcell = df_obj.cell
     kpts = numpy.asarray(kpts)
     assert numpy.all(kpts == df_obj.kpts)
+
+    wrap_around = df_obj.wrap_around
+    kpts, kmesh = kpts_to_kmesh(pcell, df_obj.kpts, wrap_around)
+    phase = get_phase(pcell, kpts, kmesh, wrap_around)[1]
 
     # get the Coulomb kernel
     inpv_kpt = df_obj._inpv_kpt
@@ -85,6 +91,19 @@ def ao2mo_7d(df_obj, mo_coeff_kpts, kpts=None):
             eri_7d[km, kn, kl] = lib.dot(vq, rho_ls)
     
     return eri_7d
+
+def ao2mo_sc(df_obj, mo_coeff_kpts, kpts=None):
+    if kpts is None:
+        kpts = df_obj.kpts
+
+    pcell = df_obj.cell
+    kpts = numpy.asarray(kpts)
+    assert numpy.all(kpts == df_obj.kpts)
+
+    wrap_around = df_obj.wrap_around
+    kpts, kmesh = kpts_to_kmesh(pcell, df_obj.kpts, wrap_around)
+    phase = get_phase(pcell, kpts, kmesh, wrap_around)[1]
+
 
 fft.isdf.FFTISDF.ao2mo_7d = ao2mo_7d
 fft.isdf.FFTISDF.get_eri = get_ao_eri

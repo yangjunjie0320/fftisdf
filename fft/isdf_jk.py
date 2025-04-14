@@ -5,17 +5,17 @@ import pyscf
 from pyscf import lib
 from pyscf.pbc.lib.kpts_helper import is_zero
 
-from pyscf.pbc.tools.k2gamma import get_phase, kpts_to_kmesh as pyscf_kpts_to_kmesh
+from pyscf.pbc import tools as pbctools
+from pyscf.pbc.tools.k2gamma import get_phase
 from pyscf.pbc.df.df_jk import _format_dms, _format_kpts_band, _format_jks
 
 PYSCF_MAX_MEMORY = int(os.environ.get("PYSCF_MAX_MEMORY", 2000))
 
-def kpts_to_kmesh(df_obj, kpts):
+def kpts_to_kmesh(cell, kpts, wrap_around=False):
     if not isinstance(kpts, numpy.ndarray):
         kpts = numpy.asarray(kpts.kpts)
-    kmesh = pyscf_kpts_to_kmesh(df_obj.cell, kpts)
-    wrap_around = df_obj.wrap_around
-    assert numpy.allclose(kpts, df_obj.cell.get_kpts(kmesh, wrap_around=wrap_around))
+    kmesh = pbctools.k2gamma.kpts_to_kmesh(cell, kpts)
+    assert numpy.allclose(kpts, cell.get_kpts(kmesh, wrap_around=wrap_around))
     return kpts, kmesh
 
 def spc_to_kpt(m_spc, phase):
@@ -55,18 +55,15 @@ def get_j_kpts(df_obj, dm_kpts, hermi=1, kpts=numpy.zeros((1, 3)), kpts_band=Non
     assert cell.low_dim_ft_type != 'inf_vacuum'
     assert cell.dimension > 1
 
-    pcell = df_obj.cell
-    # check if kpts is consistent with df_obj.kpts
-    assert numpy.allclose(kpts, df_obj.kpts)
-    kpts, kmesh = kpts_to_kmesh(df_obj, df_obj.kpts)
+    cell = df_obj.cell
+    kpts = numpy.asarray(kpts)
+    assert numpy.all(kpts == df_obj.kpts)
 
     wrap_around = df_obj.wrap_around
-    scell, phase = get_phase(
-        pcell, df_obj.kpts, kmesh=kmesh,
-        wrap_around=wrap_around
-    )
+    kpts, kmesh = kpts_to_kmesh(cell, df_obj.kpts, wrap_around)
+    phase = get_phase(cell, kpts, kmesh, wrap_around)[1]
 
-    nao = pcell.nao_nr()
+    nao = cell.nao_nr()
     nkpt = nspc = numpy.prod(kmesh)
 
     dm_kpts = lib.asarray(dm_kpts, order='C')
@@ -111,18 +108,15 @@ def get_k_kpts(df_obj, dm_kpts, hermi=1, kpts=numpy.zeros((1, 3)), kpts_band=Non
     assert cell.low_dim_ft_type != 'inf_vacuum'
     assert cell.dimension > 1
 
-    pcell = df_obj.cell
-    # check if kpts is consistent with df_obj.kpts
-    assert numpy.allclose(kpts, df_obj.kpts)
-    kpts, kmesh = kpts_to_kmesh(df_obj, df_obj.kpts)
-    
-    wrap_around = df_obj.wrap_around
-    scell, phase = get_phase(
-        pcell, df_obj.kpts, kmesh=kmesh,
-        wrap_around=wrap_around
-    )
+    cell = df_obj.cell
+    kpts = numpy.asarray(kpts)
+    assert numpy.all(kpts == df_obj.kpts)
 
-    nao = pcell.nao_nr()
+    wrap_around = df_obj.wrap_around
+    kpts, kmesh = kpts_to_kmesh(cell, df_obj.kpts, wrap_around)
+    phase = get_phase(cell, kpts, kmesh, wrap_around)[1]
+
+    nao = cell.nao_nr()
     nkpt = nspc = numpy.prod(kmesh)
 
     dm_kpts = lib.asarray(dm_kpts, order='C')
@@ -159,7 +153,6 @@ def get_k_kpts(df_obj, dm_kpts, hermi=1, kpts=numpy.zeros((1, 3)), kpts_band=Non
         v_spc = coul_spc * rho_spc
         v_spc = numpy.asarray(v_spc).reshape(nspc, nip, nip)
 
-        # v_kpt = phase.T.conj() @ v_spc.reshape(nspc, -1)
         v_kpt = spc_to_kpt(v_spc, phase).conj()
         v_kpt = v_kpt.reshape(nkpt, nip, nip)
         assert v_kpt.shape == (nkpt, nip, nip)

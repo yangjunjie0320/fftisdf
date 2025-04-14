@@ -20,14 +20,10 @@ from pyscf.lib.scipy_helper import pivoted_cholesky
 from pyscf.pbc.df.fft import FFTDF
 from pyscf.pbc import tools as pbctools
 from pyscf.pbc.tools.pbc import fft, ifft
-from pyscf.pbc.tools.k2gamma import get_phase
 
-from pyscf.pbc.lib import kpts_helper
-from pyscf.pbc.lib.kpts_helper import get_kconserv
-from pyscf.pbc.lib.kpts_helper import get_kconserv_ria
-
-# fft.isdf_jk
-from fft.isdf_jk import get_k_kpts, kpts_to_kmesh, spc_to_kpt, kpt_to_spc
+from fft.isdf_jk import get_k_kpts
+from fft.isdf_jk import get_phase, kpts_to_kmesh
+from fft.isdf_jk import spc_to_kpt, kpt_to_spc
 
 PARENT_GRID_MAXSIZE = getattr(__config__, "isdf_parent_grid_maxsize", 10000)
 
@@ -135,7 +131,10 @@ def build(df_obj, tol=1e-10):
     assert inpx.shape == (nip, 3)
     df_obj.inpx = inpx
 
-    kpts, kmesh = kpts_to_kmesh(df_obj, df_obj.kpts)
+    wrap_around = df_obj.wrap_around
+    kpts, kmesh = kpts_to_kmesh(cell, df_obj.kpts, wrap_around)
+    phase = get_phase(cell, kpts, kmesh, wrap_around)[1]
+    
     nkpt = kpts.shape[0]
     ngrid = df_obj.grids.coords.shape[0]
 
@@ -228,8 +227,9 @@ class InterpolativeSeparableDensityFitting(FFTDF):
         mesh = cell.mesh
         v0 = cell.get_Gv(mesh)
 
-        kpts, kmesh = kpts_to_kmesh(self, self.kpts)
-        phase = get_phase(cell, kpts, kmesh=kmesh, wrap_around=self.wrap_around)[1]
+        wrap_around = self.wrap_around
+        kpts, kmesh = kpts_to_kmesh(cell, self.kpts, wrap_around)
+        phase = get_phase(cell, self.kpts, kmesh=kmesh, wrap_around=wrap_around)[1]
 
         # [Step 2]: compute the metric tensor,
         # metx_kpt is a (nkpt, nip, nip) array

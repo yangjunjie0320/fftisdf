@@ -36,7 +36,9 @@ def build(df_obj, inpx=None):
     t0 = (process_clock(), perf_counter())
 
     cell = df_obj.cell
-    kpts, kmesh = kpts_to_kmesh(df_obj, df_obj.kpts)
+    wrap_around = df_obj.wrap_around
+    kpts, kmesh = kpts_to_kmesh(cell, df_obj.kpts, wrap_around)
+    phase = get_phase(cell, kpts, kmesh, wrap_around)[1]
     nkpt = len(kpts)
 
     nip = inpx.shape[0]

@@ -1,13 +1,9 @@
 dependencies:
-  - conda-forge::cmake
-  - conda-forge::compilers
   - defaults::numpy
   - defaults::scipy
   - conda-forge::h5py
   - conda-forge::hdf5
-  - python
+  - python==3.10
   - pip
   - pip:
     - pyscf
-    - line_profiler
-    - pytest
