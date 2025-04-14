@@ -348,8 +348,6 @@ class InterpolativeSeparableDensityFitting(FFTDF):
 
         return vj, vk
 
-        
-
 ISDF = FFTISDF = InterpolativeSeparableDensityFitting
 
 if __name__ == "__main__":

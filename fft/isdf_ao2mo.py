@@ -12,7 +12,8 @@ def member(kpt, kpts):
     assert len(ind) == 1, f"search for {kpt} in {kpts} returns {ind}"
     return ind[0]
 
-def get_ao_eri(df_obj, kpts=None, compact=False):
+def get_ao_eri(df_obj, kpts=None, compact=False): 
+    # TODO: compact is not supported yet
     assert compact is False, "compact is not supported"
 
     cell = df_obj.cell
@@ -42,6 +43,7 @@ def get_ao_eri(df_obj, kpts=None, compact=False):
     return eri_ao
 
 def ao2mo_7d(df_obj, mo_coeff_kpts, kpts=None):
+    # TODO: support different mo_coeff_kpts for each AO index
     if kpts is None:
         kpts = df_obj.kpts
 
