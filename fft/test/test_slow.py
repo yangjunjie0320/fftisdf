@@ -1,6 +1,6 @@
 import unittest
 
-from fft.test.test_eri_kpts import EriKptsTest
+from fft.test.test_eri_kpt import EriKptsTest
 from fft.test.test_vjk_kpts import VjkKptsTest
 
 if __name__ == "__main__":
