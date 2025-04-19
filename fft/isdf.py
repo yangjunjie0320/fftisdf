@@ -42,10 +42,12 @@ def contract(f_kpt, g_kpt, phase):
     assert f_kpt.shape == (nk, m, n)
     assert g_kpt.shape == (nk, l, n)
 
+    # kmn,knl -> kml
     t_kpt = f_kpt.conj() @ g_kpt.transpose(0, 2, 1)
     t_kpt = t_kpt.reshape(nk, m, l)
     t_spc = kpt_to_spc(t_kpt, phase)
 
+    # smn,smn -> smn
     x_spc = t_spc * t_spc
     x_kpt = spc_to_kpt(x_spc, phase)
     return x_kpt
@@ -127,7 +129,7 @@ def build(df_obj, tol=1e-10):
             m0 = (m0 * 2 + 1).astype(int)
             log.info("Original mesh %s is too large, reduced to %s as parent grid.", mesh, m0)
         g0 = cell.gen_uniform_grids(m0)
-        inpx = select_inpx(df_obj, g0=g0, c0=c0, tol=tol)
+        inpx = select_inpx(df_obj, g0=g0, c0=c0, tol=tol, kpts=kpts)
     else:
         log.debug("Using pre-computed interpolating vectors, c0 is not used")
     df_obj.inpx = inpx

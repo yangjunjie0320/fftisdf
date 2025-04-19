@@ -108,31 +108,29 @@ def ao2mo_spc(df_obj, mo_coeff_kpts, kpts=None):
 
     # get the Coulomb kernel
     nkpt, nao, nmo = mo_coeff_kpts.shape
+    nip = df_obj._inpv_kpt.shape[1]
+    nmo2 = nmo * nmo
+
     inpv_kpt = df_obj._inpv_kpt @ mo_coeff_kpts
-    # inpv_kpt = numpy.einsum("kIm,kmp->kIp", df_obj._inpv_kpt, mo_coeff_kpts)
-    # inpv_kpt = inpv_kpt.reshape(nkpt, nip, nmo)
+    inpv_kpt = inpv_kpt.reshape(nkpt, nip, nmo)
     coul_kpt = df_obj._coul_kpt
 
-    nip = inpv_kpt.shape[1]
     inpv_kpt = inpv_kpt.reshape(nkpt, -1)
     inpv_spc = kpt_to_spc(inpv_kpt, phase)
-    # inpv_spc = numpy.einsum("kIp,Rk->RIp", inpv_kpt, phase)
     inpv_spc *= numpy.sqrt(nspc)
 
     inpv_spc = inpv_spc.reshape(nspc * nip, nmo)
     rho_spc = inpv_spc.reshape(-1, nmo, 1) * inpv_spc.reshape(-1, 1, nmo)
-    
-    nmo2 = nmo * nmo
     rho_spc = rho_spc.reshape(nspc, nip, nmo2)
+
     rho_kpt = spc_to_kpt(rho_spc, phase)
-    rho_kpt = rho_kpt.reshape(nkpt, nip, nmo2)
 
     eri_spc = numpy.zeros((nmo, nmo, nmo, nmo))
     for q in range(nkpt):
         rho_q = rho_kpt[q].reshape(nip, -1)
         coul_q = coul_kpt[q]
-        v_q = lib.dot(rho_q.T.conj(), coul_q)
-        eri_q = lib.dot(v_q, rho_q)
+        v_q = lib.dot(rho_q.T, coul_q)
+        eri_q = lib.dot(v_q, rho_q.conj())
         eri_q = eri_q.real / nspc
         eri_q = eri_q.reshape(nmo, nmo, nmo, nmo)
         eri_spc += eri_q

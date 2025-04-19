@@ -152,11 +152,11 @@ def get_k_kpts(df_obj, dm_kpts, hermi=1, kpts=numpy.zeros((1, 3)), kpts_band=Non
         v_spc = coul_spc * rho_spc
         v_spc = numpy.asarray(v_spc).reshape(nspc, nip, nip)
 
-        v_kpt = spc_to_kpt(v_spc, phase).conj()
+        v_kpt = spc_to_kpt(v_spc, phase)
         v_kpt = v_kpt.reshape(nkpt, nip, nip)
         assert v_kpt.shape == (nkpt, nip, nip)
 
-        vks.append([x.conj().T @ v @ x for x, v in zip(inpv_kpt, v_kpt)])
+        vks.append([x.conj().T @ v.conj() @ x for x, v in zip(inpv_kpt, v_kpt)])
 
     vks = numpy.asarray(vks).reshape(nset, nkpt, nao, nao)
     if is_zero(kpts_band):
