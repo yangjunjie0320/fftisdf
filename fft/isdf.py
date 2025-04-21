@@ -167,8 +167,9 @@ class InterpolativeSeparableDensityFitting(FFTDF):
     blksize = None
     c0 = None
     inpx = None
+    async_io = True
 
-    _keys = {"blksize", "tol", "c0", "inpx"}
+    _keys = {"blksize", "tol", "c0", "inpx", "async_io", "wrap_around"}
 
     def __init__(self, cell, kpts=numpy.zeros((1, 3))):
         FFTDF.__init__(self, cell, kpts)
@@ -266,24 +267,38 @@ class InterpolativeSeparableDensityFitting(FFTDF):
 
         log.debug("\nComputing coul_kpt")
         info = (lambda s: f"coul_kpt[ %{len(s)}d / {s}]")(str(nkpt))
-        for q in range(nkpt):
-            t0 = (process_clock(), perf_counter())
-            
+
+        def prefetch(q, b):
             tq = numpy.dot(grids.coords, kpts[q])
             fq = numpy.exp(-1j * tq)
-            vq = pbctools.get_coulG(cell, k=kpts[q], Gv=v0, mesh=mesh)
-            vq *= cell.vol / ngrid
+            b[:] = eta_kpt[:, :, q].T * fq
 
-            lhs = eta_kpt[:, :, q].T * fq
-            wq  = fft(lhs, mesh)
-            rhs = ifft(wq * vq, mesh)
-            kern_q = lib.dot(lhs, rhs.conj().T)
+        with lib.call_in_background(prefetch, sync=not self.async_io) as f:
+            buff1 = numpy.zeros((nip, ngrid), dtype=numpy.complex128)
+            buff2 = numpy.zeros((nip, ngrid), dtype=numpy.complex128)
 
-            metx_q = metx_kpt[q]
-            coul_q = lstsq(metx_q, kern_q, tol=tol2)
-            coul_kpt[q] = (coul_q + coul_q.conj().T) / 2
+            f(0, buff2)
+            
+            for q in range(nkpt):
+                t0 = (process_clock(), perf_counter())
 
-            t1 = log.timer(info % (q + 1), *t0)
+                buff1, buff2 = buff2, buff1                
+                if q + 1 < nkpt:
+                    f(q + 1, buff2)
+                
+                vq = pbctools.get_coulG(cell, k=kpts[q], Gv=v0, mesh=mesh)
+                vq *= cell.vol / ngrid
+                
+                lq = buff1
+                wq  = fft(lq, mesh)
+                rq = ifft(wq * vq, mesh)
+                kern_q = lib.dot(lq, rq.conj().T)
+                
+                metx_q = metx_kpt[q]
+                coul_q = lstsq(metx_q, kern_q, tol=tol2)
+                coul_kpt[q] = (coul_q + coul_q.conj().T) / 2
+                
+                t1 = log.timer(info % (q + 1), *t0)
 
         self._inpv_kpt = inpv_kpt
         self._coul_kpt = coul_kpt
