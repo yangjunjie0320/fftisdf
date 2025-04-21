@@ -238,12 +238,12 @@ class InterpolativeSeparableDensityFitting(FFTDF):
         assert metx_kpt.shape == (nkpt, nip, nip)
 
         # [Step 3]: compute the right-hand side of the least-square fitting
-        # eta_kpt is a (nkpt, nip, ngrid) array
+        # eta_kpt is a (ngrid, nip, nkpt) array
         eta_kpt = None
         if fswap is not None:
-            eta_kpt = fswap.create_dataset("eta_kpt", shape=(nkpt, nip, ngrid), dtype=numpy.complex128)
+            eta_kpt = fswap.create_dataset("eta_kpt", shape=(ngrid, nip, nkpt), dtype=numpy.complex128)
         else:
-            eta_kpt = numpy.zeros((nkpt, nip, ngrid), dtype=numpy.complex128)
+            eta_kpt = numpy.zeros((ngrid, nip, nkpt), dtype=numpy.complex128)
         
         log.debug("\nComputing eta_kpt")
         info = (lambda s: f"eta_kpt[ %{len(s)}d: %{len(s)}d]")(str(ngrid))
@@ -251,9 +251,14 @@ class InterpolativeSeparableDensityFitting(FFTDF):
         for ig, (ao_etc_kpt, g0, g1) in enumerate(aoR_loop):
             t0 = (process_clock(), perf_counter())
             ao_kpt = numpy.asarray(ao_etc_kpt[0])
+
             eta_kpt_g0g1 = contract(inpv_kpt, ao_kpt, phase)
-            eta_kpt[:, :, g0:g1] = eta_kpt_g0g1
+            eta_kpt_g0g1 = eta_kpt_g0g1.transpose(2, 1, 0)
+
+            eta_kpt[g0:g1, :, :] = eta_kpt_g0g1
             t1 = log.timer(info % (g0, g1), *t0)
+            
+            eta_kpt_g0g1 = None
 
         # [Step 4]: compute the Coulomb kernel,
         # coul_kpt is a (nkpt, nip, nip) array
@@ -265,18 +270,18 @@ class InterpolativeSeparableDensityFitting(FFTDF):
             t0 = (process_clock(), perf_counter())
             
             tq = numpy.dot(grids.coords, kpts[q])
-            fq = numpy.exp(-1j * tq) 
+            fq = numpy.exp(-1j * tq)
             vq = pbctools.get_coulG(cell, k=kpts[q], Gv=v0, mesh=mesh)
             vq *= cell.vol / ngrid
 
-            lhs = eta_kpt[q] * fq
+            lhs = eta_kpt[:, :, q].T * fq
             wq  = fft(lhs, mesh)
             rhs = ifft(wq * vq, mesh)
             kern_q = lib.dot(lhs, rhs.conj().T)
 
             metx_q = metx_kpt[q]
             coul_q = lstsq(metx_q, kern_q, tol=tol2)
-            coul_kpt[q] = coul_q
+            coul_kpt[q] = (coul_q + coul_q.conj().T) / 2
 
             t1 = log.timer(info % (q + 1), *t0)
 

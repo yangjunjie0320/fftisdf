@@ -35,77 +35,12 @@ def kpt_to_spc(m_kpt, phase):
     m_spc = m_spc.reshape(m_kpt.shape)
     return m_spc.real
 
-def get_j_kpts(df_obj, dm_kpts, hermi=1, kpts=numpy.zeros((1, 3)), kpts_band=None,
-               exxdiv=None):
-    """
-    Get the J matrix for a set of k-points.
-    
-    Args:
-        df_obj: The FFT-ISDF object. 
-        dm_kpts: Density matrices at each k-point.
-        hermi: Whether the density matrices are Hermitian.
-        kpts: The k-points to calculate J for.
-        kpts_band: The k-points of the bands.
-        exxdiv: The divergence of the exchange functional (ignored).
-        
-    Returns:
-        The J matrix at the specified k-points.
-    """
-    cell = df_obj.cell
-    assert cell.low_dim_ft_type != 'inf_vacuum'
-    assert cell.dimension > 1
-
-    kpts = numpy.asarray(kpts)
-    assert numpy.all(kpts == df_obj.kpts)
-
-    wrap_around = df_obj.wrap_around
-    kpts, kmesh = kpts_to_kmesh(cell, df_obj.kpts, wrap_around)
-    phase = get_phase(cell, kpts, kmesh, wrap_around)[1]
-
-    nao = cell.nao_nr()
-    nkpt = nspc = numpy.prod(kmesh)
-
-    dm_kpts = lib.asarray(dm_kpts, order='C')
-    dms = _format_dms(dm_kpts, kpts)
-    nset, nkpt, nao = dms.shape[:3]
-
-    kpts_band, input_band = _format_kpts_band(kpts_band, kpts), kpts_band
-    nband = len(kpts_band)
-    assert nband == nkpt, "not supporting kpts_band"
-
-    inpv_kpt = df_obj._inpv_kpt
-    coul_kpt = df_obj._coul_kpt
-
-    nip = inpv_kpt.shape[1]
-    assert inpv_kpt.shape == (nkpt, nip, nao)
-    assert coul_kpt.shape == (nkpt, nip, nip)
-
-    coul0 = coul_kpt[0]
-    assert coul0.shape == (nip, nip)
-
-    rho = numpy.einsum("kIm,kIn,xkmn->xI", inpv_kpt, inpv_kpt.conj(), dms, optimize=True)
-    rho *= 1.0 / nkpt
-    assert rho.shape == (nset, nip)
-
-    v0 = numpy.einsum("IJ,xJ->xI", coul0, rho, optimize=True)
-    assert v0.shape == (nset, nip)
-
-    kpts_band, input_band = _format_kpts_band(kpts_band, kpts), kpts_band
-    nband = len(kpts_band)
-    assert nband == nkpt, "not supporting kpts_band"
-
-    vj_kpts = numpy.einsum("kIm,kIn,xI->xkmn", inpv_kpt.conj(), inpv_kpt, v0, optimize=True)
-    assert vj_kpts.shape == (nset, nkpt, nao, nao)
-
-    if is_zero(kpts_band):
-        vj_kpts = vj_kpts.real
-    return _format_jks(vj_kpts, dm_kpts, input_band, kpts)
-
 def get_k_kpts(df_obj, dm_kpts, hermi=1, kpts=numpy.zeros((1, 3)), kpts_band=None,
                exxdiv=None):
     cell = df_obj.cell
     assert cell.low_dim_ft_type != 'inf_vacuum'
     assert cell.dimension > 1
+    assert hermi == 1
 
     cell = df_obj.cell
     kpts = numpy.asarray(kpts)
@@ -141,7 +76,7 @@ def get_k_kpts(df_obj, dm_kpts, hermi=1, kpts=numpy.zeros((1, 3)), kpts_band=Non
 
     vks = []
     for dm_kpt in dms:
-        rho_kpt = [x @ d @ x.conj().T for x, d in zip(inpv_kpt, dm_kpt)]
+        rho_kpt = inpv_kpt @ dm_kpt @ inpv_kpt.conj().transpose(0, 2, 1)
         rho_kpt = numpy.asarray(rho_kpt) / nkpt
         assert rho_kpt.shape == (nkpt, nip, nip)
 
@@ -150,13 +85,14 @@ def get_k_kpts(df_obj, dm_kpts, hermi=1, kpts=numpy.zeros((1, 3)), kpts_band=Non
         rho_spc = rho_spc.transpose(0, 2, 1)
 
         v_spc = coul_spc * rho_spc
-        v_spc = numpy.asarray(v_spc).reshape(nspc, nip, nip)
 
         v_kpt = spc_to_kpt(v_spc, phase)
         v_kpt = v_kpt.reshape(nkpt, nip, nip)
-        assert v_kpt.shape == (nkpt, nip, nip)
 
-        vks.append([x.conj().T @ v.conj() @ x for x, v in zip(inpv_kpt, v_kpt)])
+        # vk_kpt = numpy.einsum("kIJ,kIm,kJn->kmn", v_kpt, inpv_kpt.conj(), inpv_kpt, optimize=True)
+        vk_kpt = inpv_kpt.transpose(0, 2, 1) @ v_kpt @ inpv_kpt.conj()
+        vk_kpt = vk_kpt.conj().reshape(nkpt, nao, nao)
+        vks.append(vk_kpt)
 
     vks = numpy.asarray(vks).reshape(nset, nkpt, nao, nao)
     if is_zero(kpts_band):
