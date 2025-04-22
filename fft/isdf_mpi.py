@@ -105,7 +105,36 @@ def build(df_obj, inpx=None):
 fftisdf.build = build
 
 class WithMPI(fftisdf.FFTISDF):
-    pass
+    def build_eta_kpt(self, inpv_kpt):
+        log = logger.new_logger(self, self.verbose)
+        max_memory = max(2000, self.max_memory - current_memory()[0]) # in MB
+
+        cell = self.cell
+        wrap_around = self.wrap_around
+        kpts, kmesh = kpts_to_kmesh(cell, self.kpts, wrap_around)
+        phase = get_phase(cell, kpts, kmesh=kmesh, wrap_around=wrap_around)[1]
+
+        grids = self.grids
+        ngrid = grids.coords.shape[0]
+        nkpt, nip, nao = inpv_kpt.shape
+
+        blksize = self.blksize
+        if blksize is None:
+            blksize = max_memory * 1e6 * 0.2
+            blksize = int(blksize) // (nkpt * nip * 16)
+            blksize = max(blksize, 1)
+        blksize = min(blksize, int(ngrid / size))
+
+        if rank == 0:
+            self._fswap = lib.H5TmpFile()
+            fswap.close()
+
+        comm.barrier()
+        fswap = comm.bcast(self._fswap.name, root=0)
+
+
+
+
 
 FFTISDF = ISDF = WithMPI
 

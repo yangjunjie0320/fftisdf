@@ -62,8 +62,8 @@ def get_k_kpts(df_obj, dm_kpts, hermi=1, kpts=numpy.zeros((1, 3)), kpts_band=Non
     assert nband == nkpt, "not supporting kpts_band"
     assert exxdiv is None, f"exxdiv = {exxdiv}"
 
-    inpv_kpt = df_obj._inpv_kpt
-    coul_kpt = df_obj._coul_kpt
+    inpv_kpt = df_obj.inpv_kpt
+    coul_kpt = df_obj.coul_kpt
 
     nip = inpv_kpt.shape[1]
     coul_spc = kpt_to_spc(coul_kpt, phase)

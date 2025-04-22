@@ -30,7 +30,7 @@ def get_ao_eri(df_obj, kpts=None, compact=False):
     kq = kconserv2[km, kn]
     jq = df_obj._coul_kpt[kq]
 
-    inpv_kpt = df_obj._inpv_kpt
+    inpv_kpt = df_obj.inpv_kpt
     nip, nao = inpv_kpt.shape[1:]
     nao2 = nao * nao # (nao + 1) * nao // 2 if compact
 
@@ -58,8 +58,8 @@ def ao2mo_7d(df_obj, mo_coeff_kpts, kpts=None):
     phase = get_phase(pcell, kpts, kmesh, wrap_around)[1]
 
     # get the Coulomb kernel
-    inpv_kpt = df_obj._inpv_kpt
-    coul_kpt = df_obj._coul_kpt
+    inpv_kpt = df_obj.inpv_kpt
+    coul_kpt = df_obj.coul_kpt
     nkpt, nip, nao = inpv_kpt.shape
 
     nmo = mo_coeff_kpts.shape[2]
@@ -74,7 +74,7 @@ def ao2mo_7d(df_obj, mo_coeff_kpts, kpts=None):
     kconserv3 = get_kconserv(cell, kpts)
 
     # inpv_kpt = numpy.einsum("kIm,kmp->kIp", df_obj._inpv_kpt, mo_coeff_kpts)
-    inpv_kpt = df_obj._inpv_kpt @ mo_coeff_kpts
+    inpv_kpt = df_obj.inpv_kpt @ mo_coeff_kpts
     inpv_kpt = inpv_kpt.reshape(nkpt, nip, nmo)
 
     for km, kn in product(range(nkpt), repeat=2):
@@ -108,12 +108,12 @@ def ao2mo_spc(df_obj, mo_coeff_kpts, kpts=None):
 
     # get the Coulomb kernel
     nkpt, nao, nmo = mo_coeff_kpts.shape
-    nip = df_obj._inpv_kpt.shape[1]
+    nip = df_obj.inpv_kpt.shape[1]
     nmo2 = nmo * nmo
 
-    inpv_kpt = df_obj._inpv_kpt @ mo_coeff_kpts
+    inpv_kpt = df_obj.inpv_kpt @ mo_coeff_kpts
     inpv_kpt = inpv_kpt.reshape(nkpt, nip, nmo)
-    coul_kpt = df_obj._coul_kpt
+    coul_kpt = df_obj.coul_kpt
 
     inpv_kpt = inpv_kpt.reshape(nkpt, -1)
     inpv_spc = kpt_to_spc(inpv_kpt, phase)

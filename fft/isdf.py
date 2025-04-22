@@ -1,5 +1,5 @@
 import os, sys, h5py
-from itertools import product
+from tempfile import NamedTemporaryFile
 from functools import reduce
 
 import numpy, scipy
@@ -63,24 +63,29 @@ def lstsq(a, b, tol=1e-10):
     x[mask] /= s2[mask]
     x = reduce(numpy.dot, (v, x, vh))
 
+    x = (x + x.conj().T) / 2
     return x
 
 def select_inpx(df_obj, g0=None, c0=None, kpts=None, tol=1e-10):
     log = logger.new_logger(df_obj, df_obj.verbose)
-    t0 = (process_clock(), perf_counter())
     
     cell = df_obj.cell
     nao = cell.nao_nr()
     ng = g0.shape[0]
 
+    wrap_around = df_obj.wrap_around
+    kpts, kmesh = kpts_to_kmesh(cell, kpts, wrap_around)
+    phase = get_phase(cell, kpts, kmesh=kmesh, wrap_around=wrap_around)[1]
+    nkpt = len(kpts)
+
     if kpts is None:
         kpts = numpy.zeros((1, 3))
 
-    m0 = numpy.zeros((ng, ng), dtype=numpy.complex128)
-    for kpt in kpts:
-        x0 = cell.pbc_eval_gto("GTOval", g0, kpts=kpt)
-        m0 += lib.dot(x0.conj(), x0.T) ** 2
-    m0 = m0.real
+    x_kpt = cell.pbc_eval_gto("GTOval", g0, kpts=kpts)
+    x_kpt = numpy.asarray(x_kpt, dtype=numpy.complex128)
+    t = x_kpt.transpose(1, 0, 2).reshape(ng, -1)
+    m0 = t.conj() @ t.T / numpy.sqrt(nkpt)
+    m0 = m0.real ** 2
 
     chol, perm, rank = pivoted_cholesky(m0, tol=tol)
     nip = rank
@@ -101,81 +106,25 @@ def select_inpx(df_obj, g0=None, c0=None, kpts=None, tol=1e-10):
     log.info("truncated values = %6.2e, estimated error = %6.2e", s0, s1)
 
     inpx = g0[mask]
-    t1 = log.timer("interpolating points", *t0)
     return inpx
-
-def build(df_obj, tol=1e-10):
-    log = logger.new_logger(df_obj, df_obj.verbose)
-    t0 = (process_clock(), perf_counter())
-    max_memory = max(2000, df_obj.max_memory - current_memory()[0])
-
-    df_obj.dump_flags()
-    df_obj.check_sanity()
-
-    cell = df_obj.cell
-    wrap_around = df_obj.wrap_around
-    kpts, kmesh = kpts_to_kmesh(cell, df_obj.kpts, wrap_around)
-    phase = get_phase(cell, kpts, kmesh, wrap_around)[1]
-    nkpt = kpts.shape[0]
-
-    mesh = cell.mesh
-    inpx = df_obj.inpx
-    if inpx is None:
-        m0 = numpy.asarray(mesh)
-        c0 = df_obj.c0
-        if numpy.prod(m0) > PARENT_GRID_MAXSIZE:
-            f = PARENT_GRID_MAXSIZE / numpy.prod(m0)
-            m0 = numpy.floor(m0 * f ** (1/3) * 0.5)
-            m0 = (m0 * 2 + 1).astype(int)
-            log.info("Original mesh %s is too large, reduced to %s as parent grid.", mesh, m0)
-        g0 = cell.gen_uniform_grids(m0)
-        inpx = select_inpx(df_obj, g0=g0, c0=c0, tol=tol, kpts=kpts)
-    else:
-        log.debug("Using pre-computed interpolating vectors, c0 is not used")
-    df_obj.inpx = inpx
-
-    nip = inpx.shape[0]
-    assert inpx.shape == (nip, 3)
-    df_obj.inpx = inpx
-    ngrid = df_obj.grids.coords.shape[0]
-
-    if df_obj.blksize is None:
-        blksize = max_memory * 1e6 * 0.2 / (nkpt * nip * 16)
-        df_obj.blksize = max(1, int(blksize))
-    df_obj.blksize = min(df_obj.blksize, ngrid)
-
-    if df_obj.blksize >= ngrid:
-        df_obj._fswap = None
-
-    inpv_kpt = cell.pbc_eval_gto("GTOval", inpx, kpts=kpts)
-    inpv_kpt = numpy.asarray(inpv_kpt, dtype=numpy.complex128)
-    df_obj._inpv_kpt = inpv_kpt
-    
-    return df_obj
     
 class InterpolativeSeparableDensityFitting(FFTDF):
     wrap_around = False
-
-    _fswap = None
-    _isdf = None
-    _isdf_to_save = None
-
-    _coul_kpt = None
-    _inpv_kpt = None
-
     tol = 1e-8
     blksize = None
     c0 = None
     inpx = None
-    async_io = True
-
-    _keys = {"blksize", "tol", "c0", "inpx", "async_io", "wrap_around"}
+    _keys = {"blksize", "tol", "c0", "inpx", "blksize", "wrap_around"}
 
     def __init__(self, cell, kpts=numpy.zeros((1, 3))):
         FFTDF.__init__(self, cell, kpts)
-        from tempfile import NamedTemporaryFile
-        fswap = NamedTemporaryFile(dir=lib.param.TMPDIR)
-        self._fswap = fswap.name
+
+        self._fswap = None
+        self._isdf = None
+        self._isdf_to_save = NamedTemporaryFile(dir=lib.param.TMPDIR).name
+
+        self._coul_kpt = None
+        self._inpv_kpt = None
 
     def dump_flags(self, verbose=None):
         log = logger.new_logger(self, verbose)
@@ -187,10 +136,148 @@ class InterpolativeSeparableDensityFitting(FFTDF):
         return self
 
     select_inpx = select_inpx
+
+    def build_inpv_kpt(self, inpx=None, tol=1e-10):
+        log = logger.new_logger(self, self.verbose)
+        
+        cell = self.cell
+        wrap_around = self.wrap_around
+        kpts, kmesh = kpts_to_kmesh(cell, self.kpts, wrap_around)
+
+        mesh = cell.mesh
+        if inpx is None:
+            m0 = numpy.asarray(mesh)
+            c0 = self.c0
+            if numpy.prod(m0) > PARENT_GRID_MAXSIZE:
+                f = PARENT_GRID_MAXSIZE / numpy.prod(m0)
+                m0 = numpy.floor(m0 * f ** (1/3) * 0.5)
+                m0 = (m0 * 2 + 1).astype(int)
+                log.info("Original mesh %s is too large, reduced to %s as parent grid.", mesh, m0)
+            g0 = cell.gen_uniform_grids(m0)
+            inpx = select_inpx(self, g0=g0, c0=c0, tol=tol, kpts=kpts)
+        else:
+            log.debug("Using pre-computed interpolating vectors, c0 is not used")
+
+        inpv_kpt = cell.pbc_eval_gto("GTOval", inpx, kpts=kpts)
+        inpv_kpt = numpy.asarray(inpv_kpt, dtype=numpy.complex128)
+        return inpv_kpt
+
+    def build_eta_kpt(self, inpv_kpt):
+        log = logger.new_logger(self, self.verbose)
+        max_memory = max(2000, self.max_memory - current_memory()[0]) # in MB
+
+        cell = self.cell
+        wrap_around = self.wrap_around
+        kpts, kmesh = kpts_to_kmesh(cell, self.kpts, wrap_around)
+        phase = get_phase(cell, kpts, kmesh=kmesh, wrap_around=wrap_around)[1]
+
+        grids = self.grids
+        ngrid = grids.coords.shape[0]
+        nkpt, nip, nao = inpv_kpt.shape
+
+        blksize = self.blksize
+        if blksize is None:
+            blksize = max_memory * 1e6 * 0.2
+            blksize = int(blksize) // (nkpt * nip * 16)
+            blksize = max(blksize, 1)
+        blksize = min(blksize, ngrid)
+
+        fswap = lib.H5TmpFile() if blksize < ngrid else None
+        self._fswap = fswap
+        
+        eta_kpt = None
+        if fswap is None:
+            log.debug("\nIn-core version is used for eta_kpt.")
+            log.debug("memory required: %6.2e GB", nkpt * nip * 16 * ngrid / 1e9)
+            log.debug("max_memory: %6.2e GB", max_memory / 1e3)
+            eta_kpt = numpy.zeros((nkpt, ngrid, nip), dtype=numpy.complex128)
+        else:
+            log.debug("\nOut-core version is used for eta_kpt.")
+            log.debug("disk space required: %6.2e GB.", nkpt * nip * 16 * ngrid / 1e9)
+            log.debug("memory needed for each block:   %6.2e GB", nkpt * nip * 16 * blksize / 1e9)
+            log.debug("memory needed for each k-point: %6.2e GB", nip * ngrid * 16 / 1e9)
+            log.debug("max_memory: %6.2e GB", max_memory / 1e3)
+            eta_kpt = fswap.create_dataset("eta_kpt", shape=(nkpt, ngrid, nip), dtype=numpy.complex128)
+        
+        log.debug("\nComputing eta_kpt")
+        info = (lambda s: f"eta_kpt[ %{len(s)}d: %{len(s)}d]")(str(ngrid))
+        aoR_loop = self.aoR_loop(grids, kpts, 0, blksize=blksize)
+        for ao_etc_kpt, g0, g1 in aoR_loop:
+            t0 = (process_clock(), perf_counter())
+            ao_kpt = numpy.asarray(ao_etc_kpt[0])
+
+            # eta_kpt_g0g1: (nkpt, nip, g1 - g0)
+            eta_kpt_g0g1 = contract(inpv_kpt, ao_kpt, phase)
+            eta_kpt_g0g1 = eta_kpt_g0g1.transpose(0, 2, 1)
+
+            eta_kpt[:, g0:g1, :] = eta_kpt_g0g1
+            eta_kpt_g0g1 = None
+
+            log.timer(info % (g0, g1), *t0)
+
+        return eta_kpt
+
+    def build_coul_kpt(self, inpv_kpt, eta_kpt):
+        log = logger.new_logger(self, self.verbose)
+        tol2 = self.tol ** 2
+
+        cell = self.cell
+        wrap_around = self.wrap_around
+        kpts, kmesh = kpts_to_kmesh(cell, self.kpts, wrap_around)
+        phase = get_phase(cell, kpts, kmesh=kmesh, wrap_around=wrap_around)[1]
+        nkpt = len(kpts)
+
+        mesh = cell.mesh
+        v0 = cell.get_Gv(mesh)
+        
+        grids = self.grids
+        coords = grids.coords
+        ngrid = coords.shape[0]
+
+        metx_kpt = contract(inpv_kpt, inpv_kpt, phase)
+        coul_kpt = []
+
+        log.debug("\nComputing coul_kpt")
+        info = (lambda s: f"coul_kpt[ %{len(s)}d / {s}]")(str(nkpt))
+        for q in range(nkpt):
+            t0 = (process_clock(), perf_counter())
+            
+            fq = numpy.exp(-1j * coords @ kpts[q])
+            vq = pbctools.get_coulG(cell, k=kpts[q], Gv=v0, mesh=mesh)
+            vq *= cell.vol / ngrid
+
+            lq = eta_kpt[q].T * fq
+            wq = fft(lq, mesh)
+            rq = ifft(wq * vq, mesh)
+            kern_q = lib.dot(lq, rq.conj().T)
+
+            metx_q = metx_kpt[q]
+            coul_q = lstsq(metx_q, kern_q, tol=tol2)
+            coul_kpt.append(coul_q)
+
+            log.timer(info % (q + 1), *t0)
+
+        coul_kpt = numpy.asarray(coul_kpt)
+        return coul_kpt
     
+    @property
+    def inpv_kpt(self):
+        if self._inpv_kpt is None:
+            if self._isdf is not None:
+                self._inpv_kpt = load(self._isdf, "inpv_kpt")
+        assert self._inpv_kpt is not None
+        return self._inpv_kpt
+    
+    @property
+    def coul_kpt(self):
+        if self._coul_kpt is None:
+            if self._isdf is not None:
+                self._coul_kpt = load(self._isdf, "coul_kpt")
+        assert self._coul_kpt is not None
+        return self._coul_kpt
+
     def build(self):
         log = logger.new_logger(self, self.verbose)
-        max_memory = max(2000, self.max_memory - current_memory()[0])
 
         # If a pre-computed ISDF is available, load it
         if self._isdf is not None:
@@ -201,116 +288,35 @@ class InterpolativeSeparableDensityFitting(FFTDF):
             self._coul_kpt = coul_kpt
             return inpv_kpt, coul_kpt
 
-        tol2 = self.tol ** 2
-        build(self, tol=tol2)
+        self.dump_flags()
+        self.check_sanity()
 
-        grids = self.grids
-        ngrid = grids.coords.shape[0]
-
-        # [Step 1]: read the pre-computed interpolating functions
+        # [Step 1]: compute the interpolating functions
         # inpv_kpt is a (nkpt, nip, nao) array
-        inpv_kpt = self._inpv_kpt
+        tol2 = self.tol ** 2
+        inpx = self.inpx
+        t0 = (process_clock(), perf_counter())
+        inpv_kpt = self.build_inpv_kpt(tol=tol2, inpx=inpx)
+        log.timer("building inpv_kpt", *t0)
         nkpt, nip, nao = inpv_kpt.shape
 
-        # Setup the scratch file for eta_kpt if needed
-        fswap = None if self._fswap is None else h5py.File(self._fswap, "w")
-        if fswap is None:
-            log.debug("\nIn-core version is used for eta_kpt.")
-            log.debug("memory required: %6.2e GB", nkpt * nip * 16 * ngrid / 1e9)
-            log.debug("max_memory: %6.2e GB", max_memory / 1e3)
-        else:
-            log.debug("\nOut-core version is used for eta_kpt.")
-            log.debug("disk space required: %6.2e GB.", nkpt * nip * 16 * ngrid / 1e9)
-            log.debug("memory needed for each block:   %6.2e GB", nkpt * nip * 16 * self.blksize / 1e9)
-            log.debug("memory needed for each k-point: %6.2e GB", nip * ngrid * 16 / 1e9)
-            log.debug("max_memory: %6.2e GB", max_memory / 1e3)
-
-        cell = self.cell
-        mesh = cell.mesh
-        v0 = cell.get_Gv(mesh)
-
-        wrap_around = self.wrap_around
-        kpts, kmesh = kpts_to_kmesh(cell, self.kpts, wrap_around)
-        phase = get_phase(cell, self.kpts, kmesh=kmesh, wrap_around=wrap_around)[1]
-
-        # [Step 2]: compute the metric tensor,
-        # metx_kpt is a (nkpt, nip, nip) array
-        metx_kpt = contract(inpv_kpt, inpv_kpt, phase)
-        assert metx_kpt.shape == (nkpt, nip, nip)
-
-        # [Step 3]: compute the right-hand side of the least-square fitting
+        # [Step 2]: compute the right-hand side of the least-square fitting
         # eta_kpt is a (ngrid, nip, nkpt) array
-        eta_kpt = None
-        if fswap is not None:
-            eta_kpt = fswap.create_dataset("eta_kpt", shape=(ngrid, nip, nkpt), dtype=numpy.complex128)
-        else:
-            eta_kpt = numpy.zeros((ngrid, nip, nkpt), dtype=numpy.complex128)
-        
-        log.debug("\nComputing eta_kpt")
-        info = (lambda s: f"eta_kpt[ %{len(s)}d: %{len(s)}d]")(str(ngrid))
-        aoR_loop = self.aoR_loop(grids, kpts, 0, blksize=self.blksize)
-        for ig, (ao_etc_kpt, g0, g1) in enumerate(aoR_loop):
-            t0 = (process_clock(), perf_counter())
-            ao_kpt = numpy.asarray(ao_etc_kpt[0])
+        t0 = (process_clock(), perf_counter())
+        eta_kpt = self.build_eta_kpt(inpv_kpt)
+        log.timer("building eta_kpt", *t0)
 
-            eta_kpt_g0g1 = contract(inpv_kpt, ao_kpt, phase)
-            eta_kpt_g0g1 = eta_kpt_g0g1.transpose(2, 1, 0)
-
-            eta_kpt[g0:g1, :, :] = eta_kpt_g0g1
-            t1 = log.timer(info % (g0, g1), *t0)
-            
-            eta_kpt_g0g1 = None
-
-        # [Step 4]: compute the Coulomb kernel,
+        # [Step 3]: compute the Coulomb kernel,
         # coul_kpt is a (nkpt, nip, nip) array
-        coul_kpt = numpy.zeros((nkpt, nip, nip), dtype=numpy.complex128)
-
-        log.debug("\nComputing coul_kpt")
-        info = (lambda s: f"coul_kpt[ %{len(s)}d / {s}]")(str(nkpt))
-
-        def prefetch(q, b):
-            tq = numpy.dot(grids.coords, kpts[q])
-            fq = numpy.exp(-1j * tq)
-            b[:] = eta_kpt[:, :, q].T * fq
-
-        with lib.call_in_background(prefetch, sync=not self.async_io) as f:
-            buff1 = numpy.zeros((nip, ngrid), dtype=numpy.complex128)
-            buff2 = numpy.zeros((nip, ngrid), dtype=numpy.complex128)
-
-            f(0, buff2)
-            
-            for q in range(nkpt):
-                t0 = (process_clock(), perf_counter())
-
-                buff1, buff2 = buff2, buff1                
-                if q + 1 < nkpt:
-                    f(q + 1, buff2)
-                
-                vq = pbctools.get_coulG(cell, k=kpts[q], Gv=v0, mesh=mesh)
-                vq *= cell.vol / ngrid
-                
-                lq = buff1
-                wq  = fft(lq, mesh)
-                rq = ifft(wq * vq, mesh)
-                kern_q = lib.dot(lq, rq.conj().T)
-                
-                metx_q = metx_kpt[q]
-                coul_q = lstsq(metx_q, kern_q, tol=tol2)
-                coul_kpt[q] = (coul_q + coul_q.conj().T) / 2
-                
-                t1 = log.timer(info % (q + 1), *t0)
+        t0 = (process_clock(), perf_counter())
+        coul_kpt = self.build_coul_kpt(inpv_kpt, eta_kpt)
+        log.timer("building coul_kpt", *t0)
 
         self._inpv_kpt = inpv_kpt
         self._coul_kpt = coul_kpt
 
         if self._isdf_to_save is not None:
             self._isdf = self._isdf_to_save
-
-        if fswap is not None:
-            fswap.close()
-
-        if self._isdf is None and self._fswap is not None:
-            self._isdf = self._fswap
 
         if self._isdf is not None:
             dump(self._isdf, "coul_kpt", coul_kpt)
@@ -319,7 +325,6 @@ class InterpolativeSeparableDensityFitting(FFTDF):
 
         return inpv_kpt, coul_kpt
 
-    
     def aoR_loop(self, grids=None, kpts=None, deriv=0, blksize=None):
         if grids is None:
             grids = self.grids
