@@ -67,8 +67,7 @@ def setup(test_obj, cell=None, basis="gth-dzvp", ke_cutoff=40.0,
         test_obj.isdf._isdf_to_save = isdf_to_save
         inpx = None
     else:
-        m0 = cell.cutoff_to_mesh(80.0)
-        g0 = cell.gen_uniform_grids(m0)
+        g0 = cell.gen_uniform_grids(cell.mesh)
         inpx = test_obj.isdf.select_inpx(g0=g0, kpts=kpts, tol=1e-30)
         test_obj.isdf.tol = 1e-8
     test_obj.isdf.build(inpx=inpx)
@@ -79,7 +78,7 @@ def main(cell="diamond-unit-cell", kmesh=None):
 
     kwargs = {
         "basis": "gth-dzvp", "tol": 1e-6,
-        "ke_cutoff": 20.0, "kmesh": kmesh,
+        "ke_cutoff": 40.0, "kmesh": kmesh,
         "cell": cell, "isdf_to_save": None,
     }
 
