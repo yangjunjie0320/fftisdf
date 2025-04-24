@@ -44,7 +44,7 @@ def setup(test_obj, cell=None, basis="gth-dzvp", ke_cutoff=40.0,
         1.000000000, 0.000000000, 0.000000000
         0.000000000, 1.000000000, 0.000000000
         0.000000000, 0.000000000, 2.000000000'''
-        cell.unit = 'B'
+        cell.unit = 'A'
         cell.verbose = 5
         cell.ke_cutoff = ke_cutoff
         cell.symmetry = False
