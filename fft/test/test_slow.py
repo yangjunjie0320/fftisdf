@@ -9,7 +9,8 @@ from fft.test.test_eri_spc import EriSpcTest
 from fft.test.test_eri_kpt import EriKptsTest
 from fft.test.test_vjk_kpts import VjkKptsTest
 
-def setup(test_obj, basis="gth-dzvp", ke_cutoff=40.0, cell=None, kmesh=None, isdf_to_save=None):
+def setup(test_obj, cell=None, basis="gth-dzvp", ke_cutoff=40.0, 
+          kmesh=None, isdf_to_save=None, tol=1e-6):
     if kmesh is None:
         kmesh = [2, 2, 2]
 
@@ -28,25 +29,28 @@ def setup(test_obj, basis="gth-dzvp", ke_cutoff=40.0, cell=None, kmesh=None, isd
         cell.unit = 'B' 
         cell.verbose = 5
         cell.ke_cutoff = ke_cutoff
-        # cell.output = '/dev/null'
         cell.symmetry = False
         cell.build(dump_input=False)
 
     assert isinstance(cell, Cell)
 
+    kpts = cell.make_kpts(kmesh)
+
     test_obj.cell = cell
     test_obj.kmesh = kmesh
-    test_obj.kpts = cell.make_kpts(kmesh)
-    test_obj.fftdf = FFTDF(cell, kpts=test_obj.kpts)
+    test_obj.kpts = kpts
+    test_obj.tol = tol
 
-    test_obj.isdf  = fft.ISDF(cell, kpts=test_obj.kpts)
+    test_obj.fftdf = FFTDF(cell, kpts=kpts)
+    
+    test_obj.isdf  = fft.ISDF(cell, kpts=kpts)
     if isdf_to_save is not None:
         test_obj.isdf._isdf = isdf_to_save
         test_obj.isdf._isdf_to_save = isdf_to_save
         inpx = None
     else:
         g0 = cell.gen_uniform_grids(cell.mesh)
-        inpx = test_obj.isdf.select_inpx(g0=g0, kpts=test_obj.kpts, tol=1e-30)
+        inpx = test_obj.isdf.select_inpx(g0=g0, kpts=kpts, tol=1e-30)
         test_obj.isdf.tol = 1e-8
     test_obj.isdf.build(inpx=inpx)
 
@@ -56,10 +60,9 @@ if __name__ == "__main__":
 
         kwargs = {
             "basis": "gth-dzvp",
-            "ke_cutoff": 20.0,
-            "kmesh": kmesh,
+            "ke_cutoff": 10.0, "kmesh": kmesh,
             "cell": "diamond-unit-cell",
-            "isdf_to_save": None
+            "isdf_to_save": None, "tol": 1e-6
         }
 
         vjk_kpts_test = VjkKptsTest()
