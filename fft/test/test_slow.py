@@ -25,7 +25,7 @@ def setup(test_obj, cell=None, basis="gth-dzvp", ke_cutoff=40.0,
         0.000000000, 3.370137329, 3.370137329
         3.370137329, 0.000000000, 3.370137329
         3.370137329, 3.370137329, 0.000000000'''
-        cell.unit = 'B' 
+        cell.unit = 'A' 
         cell.verbose = 5
         cell.ke_cutoff = ke_cutoff
         cell.symmetry = False
@@ -78,7 +78,7 @@ def main(cell="diamond-unit-cell", kmesh=None):
 
     kwargs = {
         "basis": "gth-dzvp", "tol": 1e-6,
-        "ke_cutoff": 80.0, "kmesh": kmesh,
+        "ke_cutoff": 40.0, "kmesh": kmesh,
         "cell": cell, "isdf_to_save": None,
     }
 
