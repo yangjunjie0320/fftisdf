@@ -157,7 +157,4 @@ class EriSpcTest(unittest.TestCase):
         self.assertTrue(is_close)
 
 if __name__ == "__main__":
-    # unittest.main()
-    test = EriSpcTest()
-    test.setUp()
-    test.test_fft_eri_spc_slow_mo4()
+    unittest.main()
