@@ -8,6 +8,7 @@ import fft.isdf_ao2mo
 
 class EriKptsTest(unittest.TestCase):
     cell = None
+    tol = 1e-6
 
     def setUp(self):
         kmesh = [1, 1, 3]
@@ -31,10 +32,9 @@ class EriKptsTest(unittest.TestCase):
         self.cell = cell
         self.kmesh = kmesh
         self.kpts = cell.make_kpts(kmesh)
-        self.tol = 1e-6
 
         self.fftdf = pbc.df.FFTDF(cell, kpts=self.kpts)
-        
+
         self.isdf  = fft.ISDF(cell, kpts=self.kpts)
         g0 = cell.gen_uniform_grids(self.cell.mesh)
         inpx = self.isdf.select_inpx(g0=g0, kpts=self.kpts, tol=1e-30)

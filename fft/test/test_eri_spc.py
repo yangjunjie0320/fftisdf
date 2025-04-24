@@ -9,6 +9,7 @@ from fft.isdf_ao2mo import ao2mo_spc_slow
 
 class EriSpcTest(unittest.TestCase):
     cell = None
+    tol = 1e-6
 
     def setUp(self, kmesh=None):
         if kmesh is None:
@@ -69,7 +70,7 @@ class EriSpcTest(unittest.TestCase):
         eri_spc_sol = ao2mo_spc_slow(self.isdf, coeff_kpt, kpts=kpts)
         eri_spc_sol = eri_spc_sol.reshape(nmo2, nmo2).real
 
-        is_close = numpy.allclose(eri_spc_sol, eri_spc_ref, atol=1e-6)
+        is_close = numpy.allclose(eri_spc_sol, eri_spc_ref, atol=self.tol)
         self.assertTrue(is_close)
 
     def test_fft_eri_spc_slow_mo4(self):
@@ -97,7 +98,7 @@ class EriSpcTest(unittest.TestCase):
         eri_spc_sol = ao2mo_spc_slow(self.isdf, coeff_kpt, kpts=kpts)
         eri_spc_sol = eri_spc_sol.reshape(nmo2, nmo2).real
 
-        is_close = numpy.allclose(eri_spc_sol, eri_spc_ref, atol=1e-6)
+        is_close = numpy.allclose(eri_spc_sol, eri_spc_ref, atol=self.tol)
         self.assertTrue(is_close)
 
     def test_fftisdf_eri_spc_mo1(self):
@@ -125,7 +126,7 @@ class EriSpcTest(unittest.TestCase):
         eri_spc_sol = isdf_obj.ao2mo_spc(coeff_kpt, kpts=kpts)
         eri_spc_sol = eri_spc_sol.reshape(nmo2, nmo2).real
 
-        is_close = numpy.allclose(eri_spc_sol, eri_spc_ref, atol=1e-6)
+        is_close = numpy.allclose(eri_spc_sol, eri_spc_ref, atol=self.tol)
         self.assertTrue(is_close)
 
     def test_fftisdf_eri_spc_mo4(self):
@@ -153,7 +154,7 @@ class EriSpcTest(unittest.TestCase):
         eri_spc_sol = isdf_obj.ao2mo_spc(coeff_kpt, kpts=kpts)
         eri_spc_sol = eri_spc_sol.reshape(nmo2, nmo2).real
 
-        is_close = numpy.allclose(eri_spc_sol, eri_spc_ref, atol=1e-6)
+        is_close = numpy.allclose(eri_spc_sol, eri_spc_ref, atol=self.tol)
         self.assertTrue(is_close)
 
 if __name__ == "__main__":

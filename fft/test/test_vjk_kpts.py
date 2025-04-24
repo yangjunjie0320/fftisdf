@@ -7,6 +7,7 @@ import fft
 
 class VjkKptsTest(unittest.TestCase):
     cell = None
+    tol = 1e-6
 
     def setUp(self, kmesh=None):
         if kmesh is None:
@@ -48,10 +49,10 @@ class VjkKptsTest(unittest.TestCase):
         vj_ref, vk_ref = self.fftdf.get_jk(dm0, hermi=1, kpts=kpts)
         vj_sol, vk_sol = self.isdf.get_jk(dm0, hermi=1, kpts=kpts)
 
-        is_vj_close = numpy.allclose(vj_sol, vj_ref, atol=1e-6)
+        is_vj_close = numpy.allclose(vj_sol, vj_ref, atol=self.tol)
         self.assertTrue(is_vj_close)
 
-        is_vk_close = numpy.allclose(vk_sol, vk_ref, atol=1e-6)
+        is_vk_close = numpy.allclose(vk_sol, vk_ref, atol=self.tol)
         self.assertTrue(is_vk_close)
 
     def test_kuhf_vjk_kpts(self):
@@ -64,10 +65,10 @@ class VjkKptsTest(unittest.TestCase):
         vj_ref, vk_ref = self.fftdf.get_jk(dm0, hermi=1, kpts=kpts)
         vj_sol, vk_sol = self.isdf.get_jk(dm0, hermi=1, kpts=kpts)
 
-        is_vj_close = numpy.allclose(vj_sol, vj_ref, atol=1e-6)
+        is_vj_close = numpy.allclose(vj_sol, vj_ref, atol=self.tol)
         self.assertTrue(is_vj_close)
 
-        is_vk_close = numpy.allclose(vk_sol, vk_ref, atol=1e-6)
+        is_vk_close = numpy.allclose(vk_sol, vk_ref, atol=self.tol)
         self.assertTrue(is_vk_close)
 
 if __name__ == "__main__":
