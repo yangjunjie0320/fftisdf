@@ -69,6 +69,19 @@ class EriSpcTest(unittest.TestCase):
         eri_spc_sol = ao2mo_spc_slow(self.isdf, coeff_kpt, kpts=kpts)
         eri_spc_sol = eri_spc_sol.reshape(nmo2, nmo2).real
 
+        print("eri_spc_ref = ", eri_spc_ref.shape)
+        numpy.savetxt(self.cell.stdout, eri_spc_ref[:10, :10], fmt="% 6.2f", delimiter=", ")
+
+        print("eri_spc_sol = ", eri_spc_sol.shape)
+        numpy.savetxt(self.cell.stdout, eri_spc_sol[:10, :10], fmt="% 6.2f", delimiter=", ")
+
+        factor = eri_spc_ref / eri_spc_sol
+        print("factor = ", factor.shape)
+        numpy.savetxt(self.cell.stdout, factor[:10, :10], fmt="% 6.2f", delimiter=", ")
+
+        err = abs(eri_spc_ref - eri_spc_sol).max()
+        print("err = ", err)
+
         is_close = numpy.allclose(eri_spc_sol, eri_spc_ref, atol=tol)
         self.assertTrue(is_close)
 
