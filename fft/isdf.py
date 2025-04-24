@@ -113,13 +113,15 @@ class InterpolativeSeparableDensityFitting(FFTDF):
     tol = 1e-8
     blksize = None
     c0 = None
-    inpx = None
-    _keys = {"blksize", "tol", "c0", "inpx", "blksize", "wrap_around"}
+    _keys = {"blksize", "tol", "c0", "blksize", "wrap_around"}
 
     def __init__(self, cell, kpts=numpy.zeros((1, 3))):
         FFTDF.__init__(self, cell, kpts)
 
+        self._tmp = NamedTemporaryFile(dir=lib.param.TMPDIR)
+        self._tmpfile = self._tmp.name
         self._fswap = None
+
         self._isdf = None
         self._isdf_to_save = NamedTemporaryFile(dir=lib.param.TMPDIR).name
 
@@ -133,6 +135,10 @@ class InterpolativeSeparableDensityFitting(FFTDF):
         log.info("mesh = %s (%d PWs)", self.mesh, numpy.prod(self.mesh))
         log.info("len(kpts) = %d", len(self.kpts))
         log.info("tol = %s", self.tol)
+        log.info("c0 = %s", self.c0)
+        log.info("wrap_around = %s", self.wrap_around)
+        log.info("blksize = %s", self.blksize)
+        log.info("isdf_to_save = %s", self._isdf_to_save)
         return self
 
     select_inpx = select_inpx
@@ -177,16 +183,16 @@ class InterpolativeSeparableDensityFitting(FFTDF):
 
         blksize = self.blksize
         if blksize is None:
-            blksize = max_memory * 1e6 * 0.2
-            blksize = int(blksize) // (nkpt * nip * 16)
+            blksize = int(max_memory * 1e6 * 0.2) // (nkpt * nip * 16)
             blksize = max(blksize, 1)
+        
         blksize = min(blksize, ngrid)
 
-        fswap = lib.H5TmpFile() if blksize < ngrid else None
-        self._fswap = fswap
+        from h5py import File
+        self._fswap = File(self._tmpfile, "w") if blksize < ngrid else None
         
         eta_kpt = None
-        if fswap is None:
+        if self._fswap is None:
             log.debug("\nIn-core version is used for eta_kpt.")
             log.debug("memory required: %6.2e GB", nkpt * nip * 16 * ngrid / 1e9)
             log.debug("max_memory: %6.2e GB", max_memory / 1e3)
@@ -197,7 +203,7 @@ class InterpolativeSeparableDensityFitting(FFTDF):
             log.debug("memory needed for each block:   %6.2e GB", nkpt * nip * 16 * blksize / 1e9)
             log.debug("memory needed for each k-point: %6.2e GB", nip * ngrid * 16 / 1e9)
             log.debug("max_memory: %6.2e GB", max_memory / 1e3)
-            eta_kpt = fswap.create_dataset("eta_kpt", shape=(nkpt, ngrid, nip), dtype=numpy.complex128)
+            eta_kpt = self._fswap.create_dataset("eta_kpt", shape=(nkpt, ngrid, nip), dtype=numpy.complex128)
         
         log.debug("\nComputing eta_kpt")
         info = (lambda s: f"eta_kpt[ %{len(s)}d: %{len(s)}d]")(str(ngrid))
@@ -235,7 +241,7 @@ class InterpolativeSeparableDensityFitting(FFTDF):
         ngrid = coords.shape[0]
 
         metx_kpt = contract(inpv_kpt, inpv_kpt, phase)
-        coul_kpt = []
+        coul_kpt = numpy.zeros((nkpt, ngrid, ngrid), dtype=numpy.complex128)
 
         log.debug("\nComputing coul_kpt")
         info = (lambda s: f"coul_kpt[ %{len(s)}d / {s}]")(str(nkpt))
@@ -246,6 +252,7 @@ class InterpolativeSeparableDensityFitting(FFTDF):
             vq = pbctools.get_coulG(cell, k=kpts[q], Gv=v0, mesh=mesh)
             vq *= cell.vol / ngrid
 
+            from pyscf.pbc.tools.pbc import fft, ifft
             lq = eta_kpt[q].T * fq
             wq = fft(lq, mesh)
             rq = ifft(wq * vq, mesh)
@@ -253,11 +260,10 @@ class InterpolativeSeparableDensityFitting(FFTDF):
 
             metx_q = metx_kpt[q]
             coul_q = lstsq(metx_q, kern_q, tol=tol2)
-            coul_kpt.append(coul_q)
 
+            coul_kpt[q] = coul_q
             log.timer(info % (q + 1), *t0)
 
-        coul_kpt = numpy.asarray(coul_kpt)
         return coul_kpt
     
     @property
@@ -276,7 +282,7 @@ class InterpolativeSeparableDensityFitting(FFTDF):
         assert self._coul_kpt is not None
         return self._coul_kpt
 
-    def build(self):
+    def build(self, inpx=None):
         log = logger.new_logger(self, self.verbose)
 
         # If a pre-computed ISDF is available, load it
@@ -294,7 +300,6 @@ class InterpolativeSeparableDensityFitting(FFTDF):
         # [Step 1]: compute the interpolating functions
         # inpv_kpt is a (nkpt, nip, nao) array
         tol2 = self.tol ** 2
-        inpx = self.inpx
         t0 = (process_clock(), perf_counter())
         inpv_kpt = self.build_inpv_kpt(tol=tol2, inpx=inpx)
         log.timer("building inpv_kpt", *t0)
@@ -312,18 +317,31 @@ class InterpolativeSeparableDensityFitting(FFTDF):
         coul_kpt = self.build_coul_kpt(inpv_kpt, eta_kpt)
         log.timer("building coul_kpt", *t0)
 
+        # [Step 4]: save the results
         self._inpv_kpt = inpv_kpt
         self._coul_kpt = coul_kpt
 
         if self._isdf_to_save is not None:
-            self._isdf = self._isdf_to_save
+            isdf_to_save = self._isdf_to_save
+            self._isdf = isdf_to_save
+            self.save(isdf_to_save)
 
-        if self._isdf is not None:
-            dump(self._isdf, "coul_kpt", coul_kpt)
-            dump(self._isdf, "inpv_kpt", inpv_kpt)
-            log.info("ISDF results are saved to %s", self._isdf)
+        if self._fswap is not None:
+            self._fswap.close()
+    
+    def save(self, isdf_to_save=None):
+        log = logger.new_logger(self, self.verbose)
 
-        return inpv_kpt, coul_kpt
+        inpv_kpt = self._inpv_kpt
+        coul_kpt = self._coul_kpt
+        assert inpv_kpt is not None
+        assert coul_kpt is not None
+
+        dump(isdf_to_save, "inpv_kpt", inpv_kpt)
+        dump(isdf_to_save, "coul_kpt", coul_kpt)
+
+        nbytes = inpv_kpt.nbytes + coul_kpt.nbytes
+        log.info("ISDF results are saved to %s, size = %d MB", isdf_to_save, nbytes / 1e6)
 
     def aoR_loop(self, grids=None, kpts=None, deriv=0, blksize=None):
         if grids is None:
