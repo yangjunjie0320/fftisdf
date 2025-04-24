@@ -78,12 +78,12 @@ if __name__ == "__main__":
         eri_spc_test = EriSpcTest()
         setup(eri_spc_test, **kwargs)
 
-        # vjk_kpts_test.test_krhf_vjk_kpts()
-        # vjk_kpts_test.test_kuhf_vjk_kpts()
-        # print(f"VjkKptsTest passed for kmesh: {kmesh}")
+        vjk_kpts_test.test_krhf_vjk_kpts()
+        vjk_kpts_test.test_kuhf_vjk_kpts()
+        print(f"VjkKptsTest passed for kmesh: {kmesh}")
 
-        # eri_kpts_test.test_fftisdf_get_ao_eri()
-        # print(f"EriKptsTest passed for kmesh: {kmesh}")
+        eri_kpts_test.test_fftisdf_get_ao_eri()
+        print(f"EriKptsTest passed for kmesh: {kmesh}")
 
         eri_spc_test.test_fft_eri_spc_slow_mo1()
         eri_spc_test.test_fft_eri_spc_slow_mo4()
