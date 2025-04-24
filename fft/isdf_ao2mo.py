@@ -136,6 +136,40 @@ def ao2mo_spc(df_obj, mo_coeff_kpts, kpts=None):
         eri_spc += eri_q
     return eri_spc
 
+def ao2mo_spc_slow(df_obj, mo_coeff_kpts, kpts=None):
+    if kpts is None:
+        kpts = df_obj.kpts
+
+    pcell = df_obj.cell
+    kpts = numpy.asarray(kpts)
+    assert numpy.all(kpts == df_obj.kpts)
+
+    wrap_around = df_obj.wrap_around
+    kpts, kmesh = kpts_to_kmesh(pcell, df_obj.kpts, wrap_around)
+    phase = get_phase(pcell, kpts, kmesh, wrap_around)[1]
+    nspc, nkpt = phase.shape
+
+    if isinstance(mo_coeff_kpts, numpy.ndarray) and mo_coeff_kpts.ndim == 3:
+        mo_coeff_kpts = [mo_coeff_kpts, ] * 4
+    else:
+        mo_coeff_kpts = list(mo_coeff_kpts)
+
+    assert len(mo_coeff_kpts) == 4
+
+    # get the Coulomb kernel
+    nkpt, nip, nao = df_obj._inpv_kpt.shape
+    coul_kpt = df_obj._coul_kpt
+    coul_spc = numpy.einsum("kIJ,Rk,Sk->RISJ", coul_kpt, phase.conj(), phase, optimize=True)
+    coul_spc = coul_spc.reshape(nspc, nip, nspc, nip).real
+
+    inpv_kpts = [df_obj._inpv_kpt @ c_kpt for c_kpt in mo_coeff_kpts]
+    inpv_kpts = [x_kpt.reshape(nkpt, -1) for x_kpt in inpv_kpts]
+    inpv_spcs = [kpt_to_spc(x_kpt, phase) for x_kpt in inpv_kpts]
+    inpv_spcs = [x_spc.reshape(nspc, nip, -1) for x_spc in inpv_spcs]
+
+    eri_spc = numpy.einsum("RISJ,RIp,RIq,SJr,SJs->pqrs", coul_spc, inpv_spcs[0], inpv_spcs[1], inpv_spcs[2], inpv_spcs[3], optimize=True)
+    return eri_spc * nspc
+
 fft.isdf.FFTISDF.get_eri = get_ao_eri
 fft.isdf.FFTISDF.get_ao_eri = get_ao_eri
 fft.isdf.FFTISDF.ao2mo_spc = ao2mo_spc

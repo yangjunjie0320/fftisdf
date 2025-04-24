@@ -231,8 +231,6 @@ class InterpolativeSeparableDensityFitting(FFTDF):
         wrap_around = self.wrap_around
         kpts, kmesh = kpts_to_kmesh(cell, self.kpts, wrap_around)
         phase = get_phase(cell, kpts, kmesh=kmesh, wrap_around=wrap_around)[1]
-        nkpt = len(kpts)
-
         mesh = cell.mesh
         v0 = cell.get_Gv(mesh)
         
@@ -240,8 +238,9 @@ class InterpolativeSeparableDensityFitting(FFTDF):
         coords = grids.coords
         ngrid = coords.shape[0]
 
+        nkpt, nip, nao = inpv_kpt.shape
         metx_kpt = contract(inpv_kpt, inpv_kpt, phase)
-        coul_kpt = numpy.zeros((nkpt, ngrid, ngrid), dtype=numpy.complex128)
+        coul_kpt = numpy.zeros((nkpt, nip, nip), dtype=numpy.complex128)
 
         log.debug("\nComputing coul_kpt")
         info = (lambda s: f"coul_kpt[ %{len(s)}d / {s}]")(str(nkpt))

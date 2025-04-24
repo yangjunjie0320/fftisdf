@@ -22,7 +22,7 @@ class EriKptsTest(unittest.TestCase):
         cell.a = lv
         cell.ke_cutoff = 20.0
         cell.atom = atom
-        cell.basis = "gth-tzvp"
+        cell.basis = "gth-dzvp"
         cell.pseudo = "gth-pbe"
         cell.verbose = 0
         cell.output = '/dev/null'
@@ -34,10 +34,11 @@ class EriKptsTest(unittest.TestCase):
         self.fftdf = pbc.df.FFTDF(cell, kpts=self.kpts)
 
         self.isdf  = fft.ISDF(cell, kpts=self.kpts)
+        self.isdf.verbose = 10
         g0 = cell.gen_uniform_grids(self.cell.mesh)
-        self.isdf.inpx = self.isdf.select_inpx(g0=g0, kpts=self.kpts, tol=1e-30)
+        inpx = self.isdf.select_inpx(g0=g0, kpts=self.kpts, tol=1e-30)
         self.isdf.tol = 1e-8
-        self.isdf.build()
+        self.isdf.build(inpx=inpx)
 
     def test_fftdf_eri_ao_7d(self):
         """Test for the equivalence of the 7-index ERIs computed by two
@@ -122,4 +123,6 @@ class EriKptsTest(unittest.TestCase):
         self.assertTrue(is_close)
 
 if __name__ == "__main__":
-    unittest.main()
+    # unittest.main()
+    test = EriKptsTest()
+    test.test_fftisdf_ao2mo_7d()
