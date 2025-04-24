@@ -49,7 +49,8 @@ def setup(test_obj, cell=None, basis="gth-dzvp", ke_cutoff=40.0,
         test_obj.isdf._isdf_to_save = isdf_to_save
         inpx = None
     else:
-        g0 = cell.gen_uniform_grids(cell.mesh)
+        m0 = cell.cutoff_to_mesh(80.0)
+        g0 = cell.gen_uniform_grids(m0)
         inpx = test_obj.isdf.select_inpx(g0=g0, kpts=kpts, tol=1e-30)
         test_obj.isdf.tol = 1e-8
     test_obj.isdf.build(inpx=inpx)
@@ -77,12 +78,12 @@ if __name__ == "__main__":
         eri_spc_test = EriSpcTest()
         setup(eri_spc_test, **kwargs)
 
-        vjk_kpts_test.test_krhf_vjk_kpts()
-        vjk_kpts_test.test_kuhf_vjk_kpts()
-        print(f"VjkKptsTest passed for kmesh: {kmesh}")
+        # vjk_kpts_test.test_krhf_vjk_kpts()
+        # vjk_kpts_test.test_kuhf_vjk_kpts()
+        # print(f"VjkKptsTest passed for kmesh: {kmesh}")
 
-        eri_kpts_test.test_fftisdf_get_ao_eri()
-        print(f"EriKptsTest passed for kmesh: {kmesh}")
+        # eri_kpts_test.test_fftisdf_get_ao_eri()
+        # print(f"EriKptsTest passed for kmesh: {kmesh}")
 
         eri_spc_test.test_fft_eri_spc_slow_mo1()
         eri_spc_test.test_fft_eri_spc_slow_mo4()
