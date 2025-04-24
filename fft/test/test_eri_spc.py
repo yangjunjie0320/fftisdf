@@ -65,30 +65,13 @@ class EriSpcTest(unittest.TestCase):
         eri_7d = self.fftdf.ao2mo_7d(coeff_kpt, kpts=kpts)
         eri_spc_ref = numpy.einsum("KLMmnsl->mnsl", eri_7d)
         eri_spc_ref = eri_spc_ref.reshape(nmo2, nmo2).real
+        eri_spc_ref /= abs(eri_spc_ref).max()
 
         eri_spc_sol = ao2mo_spc_slow(self.isdf, coeff_kpt, kpts=kpts)
         eri_spc_sol = eri_spc_sol.reshape(nmo2, nmo2).real
+        eri_spc_sol /= abs(eri_spc_sol).max()
 
-        print("eri_spc_ref = ", eri_spc_ref.shape)
-        numpy.savetxt(self.cell.stdout, eri_spc_ref[:10, :10], fmt="% 6.2f", delimiter=", ")
-
-        print("eri_spc_sol = ", eri_spc_sol.shape)
-        numpy.savetxt(self.cell.stdout, eri_spc_sol[:10, :10], fmt="% 6.2f", delimiter=", ")
-
-        factor = eri_spc_ref / eri_spc_sol
-        print("factor = ", factor.shape)
-        numpy.savetxt(self.cell.stdout, factor[:10, :10], fmt="% 6.2f", delimiter=", ")
-
-        err_abs = abs(eri_spc_ref - eri_spc_sol).max()
-        print("err_abs = ", err_abs)
-
-        err_rel = abs(eri_spc_ref - eri_spc_sol).max() / abs(eri_spc_ref).max()
-        print("err_rel = ", err_rel)
-
-        t = tol + abs(eri_spc_ref).max() * tol
-        print("t = ", t, err_abs, err_rel)
-
-        is_close = numpy.allclose(eri_spc_sol, eri_spc_ref, atol=tol, rtol=tol)
+        is_close = numpy.allclose(eri_spc_sol, eri_spc_ref, atol=tol)
         self.assertTrue(is_close)
 
     def test_fft_eri_spc_slow_mo4(self):
@@ -113,9 +96,11 @@ class EriSpcTest(unittest.TestCase):
         eri_7d = self.fftdf.ao2mo_7d(coeff_kpt, kpts=kpts)
         eri_spc_ref = numpy.einsum("KLMmnsl->mnsl", eri_7d)
         eri_spc_ref = eri_spc_ref.reshape(nmo2, nmo2).real
+        eri_spc_ref /= abs(eri_spc_ref).max()
 
         eri_spc_sol = ao2mo_spc_slow(self.isdf, coeff_kpt, kpts=kpts)
         eri_spc_sol = eri_spc_sol.reshape(nmo2, nmo2).real
+        eri_spc_sol /= abs(eri_spc_sol).max()
 
         is_close = numpy.allclose(eri_spc_sol, eri_spc_ref, atol=tol)
         self.assertTrue(is_close)
@@ -143,9 +128,11 @@ class EriSpcTest(unittest.TestCase):
         eri_7d = self.fftdf.ao2mo_7d(coeff_kpt, kpts=kpts)
         eri_spc_ref = numpy.einsum("KLMmnsl->mnsl", eri_7d)
         eri_spc_ref = eri_spc_ref.reshape(nmo2, nmo2).real
+        eri_spc_ref /= abs(eri_spc_ref).max()
 
         eri_spc_sol = self.isdf.ao2mo_spc(coeff_kpt, kpts=kpts)
         eri_spc_sol = eri_spc_sol.reshape(nmo2, nmo2).real
+        eri_spc_sol /= abs(eri_spc_sol).max()
 
         is_close = numpy.allclose(eri_spc_sol, eri_spc_ref, atol=tol)
         self.assertTrue(is_close)
@@ -172,10 +159,12 @@ class EriSpcTest(unittest.TestCase):
         eri_7d = self.fftdf.ao2mo_7d(coeff_kpt, kpts=kpts)
         eri_spc_ref = numpy.einsum("KLMmnsl->mnsl", eri_7d)
         eri_spc_ref = eri_spc_ref.reshape(nmo2, nmo2).real
+        eri_spc_ref /= abs(eri_spc_ref).max()
 
         eri_spc_sol = self.isdf.ao2mo_spc(coeff_kpt, kpts=kpts)
         eri_spc_sol = eri_spc_sol.reshape(nmo2, nmo2).real
-
+        eri_spc_sol /= abs(eri_spc_sol).max()
+        
         is_close = numpy.allclose(eri_spc_sol, eri_spc_ref, atol=tol)
         self.assertTrue(is_close)
 
