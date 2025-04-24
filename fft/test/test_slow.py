@@ -35,6 +35,7 @@ def setup(test_obj, basis="gth-dzvp", ke_cutoff=40.0, cell=None, kmesh=None, isd
     assert isinstance(cell, Cell)
 
     test_obj.cell = cell
+    test_obj.kmesh = kmesh
     test_obj.kpts = cell.make_kpts(kmesh)
     test_obj.fftdf = FFTDF(cell, kpts=test_obj.kpts)
 
