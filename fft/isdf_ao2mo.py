@@ -1,4 +1,6 @@
 import numpy
+from functools import reduce
+
 from pyscf import lib
 from itertools import product
 from pyscf.pbc.lib import kpts_helper
@@ -106,33 +108,42 @@ def ao2mo_spc(df_obj, mo_coeff_kpts, kpts=None):
     phase = get_phase(pcell, kpts, kmesh, wrap_around)[1]
     nspc, nkpt = phase.shape
 
+    if isinstance(mo_coeff_kpts, numpy.ndarray) and mo_coeff_kpts.ndim == 3:
+        mo_coeff_kpts = [mo_coeff_kpts, ] * 4
+    else:
+        mo_coeff_kpts = list(mo_coeff_kpts)
+
+    assert len(mo_coeff_kpts) == 4
+
     # get the Coulomb kernel
-    nkpt, nao, nmo = mo_coeff_kpts.shape
-    nip = df_obj.inpv_kpt.shape[1]
-    nmo2 = nmo * nmo
+    nkpt, nip, nao = df_obj._inpv_kpt.shape
+    coul_kpt = df_obj._coul_kpt
 
-    inpv_kpt = df_obj.inpv_kpt @ mo_coeff_kpts
-    inpv_kpt = inpv_kpt.reshape(nkpt, nip, nmo)
-    coul_kpt = df_obj.coul_kpt
+    inpv_kpts = [df_obj._inpv_kpt @ c_kpt for c_kpt in mo_coeff_kpts]
+    inpv_kpts = [x_kpt.reshape(nkpt, -1) for x_kpt in inpv_kpts]
+    inpv_spcs = [kpt_to_spc(x_kpt, phase) for x_kpt in inpv_kpts]
+    inpv_spcs = [x_spc.reshape(nspc, nip, -1) for x_spc in inpv_spcs]
 
-    inpv_kpt = inpv_kpt.reshape(nkpt, -1)
-    inpv_spc = kpt_to_spc(inpv_kpt, phase)
-    inpv_spc *= numpy.sqrt(nspc)
+    lhs_spc = inpv_spcs[0].reshape(nspc * nip, -1, 1) * inpv_spcs[1].reshape(nspc * nip, 1, -1)
+    lhs_spc = lhs_spc.reshape(nspc, nip, -1)
+    lhs_kpt = spc_to_kpt(lhs_spc, phase)
+    lhs_kpt = lhs_kpt.reshape(nkpt, nip, -1)
+    dl = lhs_kpt.shape[2]
+    
+    rhs_spc = inpv_spcs[2].reshape(nspc * nip, -1, 1) * inpv_spcs[3].reshape(nspc * nip, 1, -1)
+    rhs_spc = rhs_spc.reshape(nspc, nip, -1)
+    rhs_kpt = spc_to_kpt(rhs_spc, phase)
+    rhs_kpt = rhs_kpt.reshape(nkpt, nip, -1)
+    dr = rhs_kpt.shape[2]
 
-    inpv_spc = inpv_spc.reshape(nspc * nip, nmo)
-    rho_spc = inpv_spc.reshape(-1, nmo, 1) * inpv_spc.reshape(-1, 1, nmo)
-    rho_spc = rho_spc.reshape(nspc, nip, nmo2)
-
-    rho_kpt = spc_to_kpt(rho_spc, phase)
-
-    eri_spc = numpy.zeros((nmo, nmo, nmo, nmo))
+    eri_spc = numpy.zeros((dl, dr))
     for q in range(nkpt):
-        rho_q = rho_kpt[q].reshape(nip, -1)
+        lhs_q = lhs_kpt[q].reshape(nip, -1)
+        rhs_q = rhs_kpt[q].reshape(nip, -1)
+
         coul_q = coul_kpt[q]
-        v_q = lib.dot(rho_q.T, coul_q)
-        eri_q = lib.dot(v_q, rho_q.conj())
-        eri_q = eri_q.real / nspc
-        eri_q = eri_q.reshape(nmo, nmo, nmo, nmo)
+        eri_q = reduce(lib.dot, (lhs_q.T, coul_q, rhs_q.conj()))
+        eri_q = eri_q.real * nspc
         eri_spc += eri_q
     return eri_spc
 

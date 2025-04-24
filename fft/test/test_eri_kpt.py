@@ -31,10 +31,9 @@ class EriKptsTest(unittest.TestCase):
 
         self.cell = cell
         self.kpts = cell.make_kpts(kmesh)
-        self.fftdf = pbc.df.FFTDF(cell, kpts=self.kpts)
 
+        self.fftdf = pbc.df.FFTDF(cell, kpts=self.kpts)
         self.isdf  = fft.ISDF(cell, kpts=self.kpts)
-        self.isdf.verbose = 10
         g0 = cell.gen_uniform_grids(self.cell.mesh)
         inpx = self.isdf.select_inpx(g0=g0, kpts=self.kpts, tol=1e-30)
         self.isdf.tol = 1e-8

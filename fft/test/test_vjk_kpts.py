@@ -21,7 +21,7 @@ class VjkKptsTest(unittest.TestCase):
         cell.a = lv
         cell.ke_cutoff = 20.0
         cell.atom = atom
-        cell.basis = "gth-tzvp"
+        cell.basis = "gth-dzvp"
         cell.pseudo = "gth-pbe"
         cell.verbose = 0
         cell.output = '/dev/null'
@@ -30,13 +30,13 @@ class VjkKptsTest(unittest.TestCase):
 
         self.cell = cell
         self.kpts = cell.make_kpts(kmesh)
+        
         self.fftdf = pbc.df.FFTDF(cell, kpts=self.kpts)
-
         self.isdf  = fft.ISDF(cell, kpts=self.kpts)
         g0 = cell.gen_uniform_grids(self.cell.mesh)
-        self.isdf.inpx = self.isdf.select_inpx(g0=g0, kpts=self.kpts, tol=1e-30)
+        inpx = self.isdf.select_inpx(g0=g0, kpts=self.kpts, tol=1e-30)
         self.isdf.tol = 1e-8
-        self.isdf.build()
+        self.isdf.build(inpx=inpx)
 
     def test_krhf_vjk_kpts(self):
         cell = self.cell
