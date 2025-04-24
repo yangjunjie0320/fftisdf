@@ -26,7 +26,7 @@ def setup(test_obj, basis="gth-dzvp", ke_cutoff=40.0, cell=None, kmesh=None, isd
         3.370137329, 0.000000000, 3.370137329
         3.370137329, 3.370137329, 0.000000000'''
         cell.unit = 'B' 
-        cell.verbose = 0
+        cell.verbose = 5
         cell.ke_cutoff = ke_cutoff
         # cell.output = '/dev/null'
         cell.symmetry = False
@@ -42,11 +42,12 @@ def setup(test_obj, basis="gth-dzvp", ke_cutoff=40.0, cell=None, kmesh=None, isd
     if isdf_to_save is not None:
         test_obj.isdf._isdf = isdf_to_save
         test_obj.isdf._isdf_to_save = isdf_to_save
+        inpx = None
     else:
         g0 = cell.gen_uniform_grids(cell.mesh)
         inpx = test_obj.isdf.select_inpx(g0=g0, kpts=test_obj.kpts, tol=1e-30)
         test_obj.isdf.tol = 1e-8
-        test_obj.isdf.build(inpx=inpx)
+    test_obj.isdf.build(inpx=inpx)
 
 if __name__ == "__main__":
     for kmesh in [[2, 2, 2], [3, 3, 3], [4, 4, 4]]:
