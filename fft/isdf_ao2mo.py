@@ -30,7 +30,8 @@ def get_ao_eri(df_obj, kpts=None, compact=False):
         raise ValueError("kpts are not conserved")
     
     kq = kconserv2[km, kn]
-    jq = df_obj._coul_kpt[kq]
+    coul_kpt = df_obj.coul_kpt
+    coul_q = coul_kpt[kq]
 
     inpv_kpt = df_obj.inpv_kpt
     nip, nao = inpv_kpt.shape[1:]
@@ -42,8 +43,7 @@ def get_ao_eri(df_obj, kpts=None, compact=False):
     rho_ls = inpv_kpt[kl].conj().reshape(-1, nao, 1) * inpv_kpt[ks].reshape(-1, 1, nao)
     rho_ls = rho_ls.reshape(nip, nao2)
 
-    vq = lib.dot(rho_mn.T, jq)
-    eri_ao = lib.dot(vq, rho_ls)
+    eri_ao = reduce(lib.dot, (rho_mn.T, coul_q, rho_ls))
     return eri_ao
 
 def ao2mo_7d(df_obj, mo_coeff_kpts, kpts=None):
