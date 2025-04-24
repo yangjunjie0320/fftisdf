@@ -79,10 +79,13 @@ class EriSpcTest(unittest.TestCase):
         print("factor = ", factor.shape)
         numpy.savetxt(self.cell.stdout, factor[:10, :10], fmt="% 6.2f", delimiter=", ")
 
-        err = abs(eri_spc_ref - eri_spc_sol).max()
-        print("err = ", err)
+        err_abs = abs(eri_spc_ref - eri_spc_sol).max()
+        print("err_abs = ", err_abs)
 
-        is_close = numpy.allclose(eri_spc_sol, eri_spc_ref, atol=tol)
+        err_rel = abs(eri_spc_ref - eri_spc_sol).max() / abs(eri_spc_ref).max()
+        print("err_rel = ", err_rel)
+
+        is_close = numpy.allclose(eri_spc_sol, eri_spc_ref, atol=tol, rtol=tol)
         self.assertTrue(is_close)
 
     def test_fft_eri_spc_slow_mo4(self):
