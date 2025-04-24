@@ -42,13 +42,11 @@ class EriSpcTest(unittest.TestCase):
         self.isdf.tol = 1e-8
         self.isdf.build(inpx=inpx)
 
-    def tearDown(self):
-        self.cell.stdout.close()
-
     def test_fft_eri_spc_slow_mo1(self):
         cell = self.cell
         kpts = self.kpts
-        isdf_obj = self.isdf
+        kmesh = self.kmesh
+        tol = self.tol
 
         nkpts = len(kpts)
         nao = cell.nao_nr()
@@ -56,7 +54,7 @@ class EriSpcTest(unittest.TestCase):
         nmo2 = nmo * nmo
 
         from fft.isdf_jk import get_phase, kpts_to_kmesh
-        wrap_around = isdf_obj.wrap_around
+        wrap_around = self.isdf.wrap_around
         kpts, kmesh = kpts_to_kmesh(cell, kpts, wrap_around)
         phase = get_phase(cell, kpts, kmesh, wrap_around)[1]
 
@@ -71,13 +69,14 @@ class EriSpcTest(unittest.TestCase):
         eri_spc_sol = ao2mo_spc_slow(self.isdf, coeff_kpt, kpts=kpts)
         eri_spc_sol = eri_spc_sol.reshape(nmo2, nmo2).real
 
-        is_close = numpy.allclose(eri_spc_sol, eri_spc_ref, atol=self.tol)
+        is_close = numpy.allclose(eri_spc_sol, eri_spc_ref, atol=tol)
         self.assertTrue(is_close)
 
     def test_fft_eri_spc_slow_mo4(self):
         cell = self.cell
         kpts = self.kpts
-        isdf_obj = self.isdf
+        kmesh = self.kmesh
+        tol = self.tol
 
         nkpts = len(kpts)
         nao = cell.nao_nr()
@@ -85,7 +84,7 @@ class EriSpcTest(unittest.TestCase):
         nmo2 = nmo * nmo
 
         from fft.isdf_jk import get_phase, kpts_to_kmesh
-        wrap_around = isdf_obj.wrap_around
+        wrap_around = self.isdf.wrap_around
         kpts, kmesh = kpts_to_kmesh(cell, kpts, wrap_around)
         phase = get_phase(cell, kpts, kmesh, wrap_around)[1]
 
@@ -99,20 +98,22 @@ class EriSpcTest(unittest.TestCase):
         eri_spc_sol = ao2mo_spc_slow(self.isdf, coeff_kpt, kpts=kpts)
         eri_spc_sol = eri_spc_sol.reshape(nmo2, nmo2).real
 
-        is_close = numpy.allclose(eri_spc_sol, eri_spc_ref, atol=self.tol)
+        is_close = numpy.allclose(eri_spc_sol, eri_spc_ref, atol=tol)
         self.assertTrue(is_close)
 
     def test_fftisdf_eri_spc_mo1(self):
         cell = self.cell
         kpts = self.kpts
-        isdf_obj = self.isdf
+        kmesh = self.kmesh
+        tol = self.tol
 
         nkpts = len(kpts)
         nao = cell.nao_nr()
         nmo = nao * 2
         nmo2 = nmo * nmo
+
         from fft.isdf_jk import get_phase, kpts_to_kmesh
-        wrap_around = isdf_obj.wrap_around
+        wrap_around = self.isdf.wrap_around
         kpts, kmesh = kpts_to_kmesh(cell, kpts, wrap_around)
         phase = get_phase(cell, kpts, kmesh, wrap_around)[1]
 
@@ -124,16 +125,17 @@ class EriSpcTest(unittest.TestCase):
         eri_spc_ref = numpy.einsum("KLMmnsl->mnsl", eri_7d)
         eri_spc_ref = eri_spc_ref.reshape(nmo2, nmo2).real
 
-        eri_spc_sol = isdf_obj.ao2mo_spc(coeff_kpt, kpts=kpts)
+        eri_spc_sol = self.isdf.ao2mo_spc(coeff_kpt, kpts=kpts)
         eri_spc_sol = eri_spc_sol.reshape(nmo2, nmo2).real
 
-        is_close = numpy.allclose(eri_spc_sol, eri_spc_ref, atol=self.tol)
+        is_close = numpy.allclose(eri_spc_sol, eri_spc_ref, atol=tol)
         self.assertTrue(is_close)
 
     def test_fftisdf_eri_spc_mo4(self):
         cell = self.cell
         kpts = self.kpts
-        isdf_obj = self.isdf
+        kmesh = self.kmesh
+        tol = self.tol
 
         nkpts = len(kpts)
         nao = cell.nao_nr()
@@ -141,7 +143,7 @@ class EriSpcTest(unittest.TestCase):
         nmo2 = nmo * nmo
 
         from fft.isdf_jk import get_phase, kpts_to_kmesh
-        wrap_around = isdf_obj.wrap_around
+        wrap_around = self.isdf.wrap_around
         kpts, kmesh = kpts_to_kmesh(cell, kpts, wrap_around)
         phase = get_phase(cell, kpts, kmesh, wrap_around)[1]
 
@@ -152,10 +154,10 @@ class EriSpcTest(unittest.TestCase):
         eri_spc_ref = numpy.einsum("KLMmnsl->mnsl", eri_7d)
         eri_spc_ref = eri_spc_ref.reshape(nmo2, nmo2).real
 
-        eri_spc_sol = isdf_obj.ao2mo_spc(coeff_kpt, kpts=kpts)
+        eri_spc_sol = self.isdf.ao2mo_spc(coeff_kpt, kpts=kpts)
         eri_spc_sol = eri_spc_sol.reshape(nmo2, nmo2).real
 
-        is_close = numpy.allclose(eri_spc_sol, eri_spc_ref, atol=self.tol)
+        is_close = numpy.allclose(eri_spc_sol, eri_spc_ref, atol=tol)
         self.assertTrue(is_close)
 
 if __name__ == "__main__":
