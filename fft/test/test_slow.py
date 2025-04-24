@@ -13,7 +13,7 @@ def setup(test_obj, basis="gth-dzvp", ke_cutoff=40.0, cell=None, kmesh=None, isd
     if kmesh is None:
         kmesh = [2, 2, 2]
 
-    if cell is "diamond-unit-cell":
+    if cell == "diamond-unit-cell":
         cell = Cell()
         cell.atom = ''' 
         C 0.000000000000   0.000000000000   0.000000000000
@@ -28,7 +28,7 @@ def setup(test_obj, basis="gth-dzvp", ke_cutoff=40.0, cell=None, kmesh=None, isd
         cell.unit = 'B' 
         cell.verbose = 0
         cell.ke_cutoff = ke_cutoff
-        cell.output = '/dev/null'
+        # cell.output = '/dev/null'
         cell.symmetry = False
         cell.build(dump_input=False)
 
@@ -54,7 +54,7 @@ if __name__ == "__main__":
 
         kwargs = {
             "basis": "gth-dzvp",
-            "ke_cutoff": 40.0,
+            "ke_cutoff": 20.0,
             "kmesh": kmesh,
             "cell": "diamond-unit-cell",
             "isdf_to_save": None
