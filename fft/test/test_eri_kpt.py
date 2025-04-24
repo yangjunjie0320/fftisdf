@@ -11,8 +11,6 @@ class EriKptsTest(unittest.TestCase):
     tol = 1e-6
 
     def setUp(self):
-        kmesh = [1, 1, 3]
-        
         a = 2.0
         lv = numpy.diag([a, a, a * 2])
         atom =  [['He', (0.5 * a, 0.5 * a, 0.5 * a)]]
@@ -29,15 +27,17 @@ class EriKptsTest(unittest.TestCase):
         cell.symmetry = False
         cell.build(dump_input=False)
 
+        kmesh = [1, 1, 3]
+        kpts = cell.make_kpts(kmesh)
+
         self.cell = cell
         self.kmesh = kmesh
-        self.kpts = cell.make_kpts(kmesh)
+        self.kpts = kpts
 
-        self.fftdf = pbc.df.FFTDF(cell, kpts=self.kpts)
-
-        self.isdf  = fft.ISDF(cell, kpts=self.kpts)
+        self.fftdf = pbc.df.FFTDF(cell, kpts=kpts)
+        self.isdf  = fft.ISDF(cell, kpts=kpts)
         g0 = cell.gen_uniform_grids(self.cell.mesh)
-        inpx = self.isdf.select_inpx(g0=g0, kpts=self.kpts, tol=1e-30)
+        inpx = self.isdf.select_inpx(g0=g0, kpts=kpts, tol=1e-30)
         self.isdf.tol = 1e-8
         self.isdf.build(inpx=inpx)
 
