@@ -105,6 +105,6 @@ def main(cell="diamond-unit-cell", kmesh=None):
     print(f"EriSpcTest passed for kmesh: {kmesh}")
     
 if __name__ == "__main__":
-    for kmesh in [[2, 2, 2], [3, 3, 3], [4, 4, 4]]:
+    for kmesh in [[3, 3, 3], [5, 5, 5]]:
         main(cell="he2-cubic-cell", kmesh=kmesh)
         
