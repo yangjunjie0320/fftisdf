@@ -42,7 +42,7 @@ class EriSpcTest(unittest.TestCase):
         self.isdf.tol = 1e-8
         self.isdf.build(inpx=inpx)
 
-    def test_fft_eri_spc_slow_mo1(self):
+    def test_fftisdf_eri_spc_slow_mo1(self):
         cell = self.cell
         kpts = self.kpts
         kmesh = self.kmesh
@@ -74,7 +74,7 @@ class EriSpcTest(unittest.TestCase):
         is_close = numpy.allclose(eri_spc_sol, eri_spc_ref, atol=tol)
         self.assertTrue(is_close)
 
-    def test_fft_eri_spc_slow_mo4(self):
+    def test_fftisdf_eri_spc_slow_mo4(self):
         cell = self.cell
         kpts = self.kpts
         kmesh = self.kmesh
@@ -82,24 +82,23 @@ class EriSpcTest(unittest.TestCase):
 
         nkpts = len(kpts)
         nao = cell.nao_nr()
-        nmo = nao * 2
-        nmo2 = nmo * nmo
+        nmos = [nao, 2 * nao, nao, 2 * nao]
 
         from fft.isdf_jk import get_phase, kpts_to_kmesh
         wrap_around = self.isdf.wrap_around
         kpts, kmesh = kpts_to_kmesh(cell, kpts, wrap_around)
         phase = get_phase(cell, kpts, kmesh, wrap_around)[1]
 
-        coeff_spc = [numpy.random.random((nkpts, nao, nmo)) for _ in range(4)]
-        coeff_kpt = [numpy.einsum("Rmp,Rk->kmp", c, phase) for c in coeff_spc]
+        coeff_spcs = [numpy.random.random((nkpts, nao, nmo)) for nmo in nmos]
+        coeff_kpts = [numpy.einsum("Rmp,Rk->kmp", coeff_spc, phase) for coeff_spc in coeff_spcs]
 
-        eri_7d = self.fftdf.ao2mo_7d(coeff_kpt, kpts=kpts)
+        eri_7d = self.fftdf.ao2mo_7d(coeff_kpts, kpts=kpts)
         eri_spc_ref = numpy.einsum("KLMmnsl->mnsl", eri_7d)
-        eri_spc_ref = eri_spc_ref.reshape(nmo2, nmo2).real
+        eri_spc_ref = eri_spc_ref.reshape(nmos[0] * nmos[1], nmos[2] * nmos[3])
         eri_spc_ref /= abs(eri_spc_ref).max()
 
-        eri_spc_sol = ao2mo_spc_slow(self.isdf, coeff_kpt, kpts=kpts)
-        eri_spc_sol = eri_spc_sol.reshape(nmo2, nmo2).real
+        eri_spc_sol = ao2mo_spc_slow(self.isdf, coeff_kpts, kpts=kpts)
+        eri_spc_sol = eri_spc_sol.reshape(nmos[0] * nmos[1], nmos[2] * nmos[3])
         eri_spc_sol /= abs(eri_spc_sol).max()
 
         is_close = numpy.allclose(eri_spc_sol, eri_spc_ref, atol=tol)
@@ -145,26 +144,25 @@ class EriSpcTest(unittest.TestCase):
 
         nkpts = len(kpts)
         nao = cell.nao_nr()
-        nmo = nao * 2
-        nmo2 = nmo * nmo
+        nmos = [nao, 2 * nao, nao, 2 * nao]
 
         from fft.isdf_jk import get_phase, kpts_to_kmesh
         wrap_around = self.isdf.wrap_around
         kpts, kmesh = kpts_to_kmesh(cell, kpts, wrap_around)
         phase = get_phase(cell, kpts, kmesh, wrap_around)[1]
 
-        coeff_spc = [numpy.random.random((nkpts, nao, nmo)) for _ in range(4)]
-        coeff_kpt = [numpy.einsum("Rmp,Rk->kmp", c, phase) for c in coeff_spc]
+        coeff_spcs = [numpy.random.random((nkpts, nao, nmo)) for nmo in nmos]
+        coeff_kpts = [numpy.einsum("Rmp,Rk->kmp", coeff_spc, phase) for coeff_spc in coeff_spcs]
 
-        eri_7d = self.fftdf.ao2mo_7d(coeff_kpt, kpts=kpts)
+        eri_7d = self.fftdf.ao2mo_7d(coeff_kpts, kpts=kpts)
         eri_spc_ref = numpy.einsum("KLMmnsl->mnsl", eri_7d)
-        eri_spc_ref = eri_spc_ref.reshape(nmo2, nmo2).real
+        eri_spc_ref = eri_spc_ref.reshape(nmos[0] * nmos[1], nmos[2] * nmos[3])
         eri_spc_ref /= abs(eri_spc_ref).max()
 
-        eri_spc_sol = self.isdf.ao2mo_spc(coeff_kpt, kpts=kpts)
-        eri_spc_sol = eri_spc_sol.reshape(nmo2, nmo2).real
+        eri_spc_sol = self.isdf.ao2mo_spc(coeff_kpts, kpts=kpts)
+        eri_spc_sol = eri_spc_sol.reshape(nmos[0] * nmos[1], nmos[2] * nmos[3])
         eri_spc_sol /= abs(eri_spc_sol).max()
-        
+
         is_close = numpy.allclose(eri_spc_sol, eri_spc_ref, atol=tol)
         self.assertTrue(is_close)
 
