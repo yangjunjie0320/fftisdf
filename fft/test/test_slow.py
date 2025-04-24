@@ -29,26 +29,26 @@ def setup(test_obj, cell=None, basis="gth-dzvp", ke_cutoff=40.0,
         cell.verbose = 5
         cell.ke_cutoff = ke_cutoff
         cell.symmetry = False
-        cell.exp_to_discard = 0.1
+        cell.exp_to_discard = 0.2
         cell.build(dump_input=False)
 
     elif cell == "he2-cubic-cell":
         cell = Cell()
         cell.atom = '''
-        He 0.500000000000   0.500000000000   0.500000000000
-        He 0.500000000000   0.500000000000   1.500000000000
+        He 1.000000000000   1.000000000000   1.000000000000
+        He 1.000000000000   1.000000000000   2.000000000000
         '''
         cell.basis = basis
         cell.pseudo = 'gth-pbe'
         cell.a = '''
-        1.000000000, 0.000000000, 0.000000000
-        0.000000000, 1.000000000, 0.000000000
-        0.000000000, 0.000000000, 2.000000000'''
+        2.000000000, 0.000000000, 0.000000000
+        0.000000000, 2.000000000, 0.000000000
+        0.000000000, 0.000000000, 3.000000000'''
         cell.unit = 'A'
         cell.verbose = 5
         cell.ke_cutoff = ke_cutoff
         cell.symmetry = False
-        cell.exp_to_discard = 0.1
+        cell.exp_to_discard = 0.2
         cell.build(dump_input=False)
         
     assert isinstance(cell, Cell)
