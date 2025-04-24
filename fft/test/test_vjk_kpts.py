@@ -52,6 +52,11 @@ class VjkKptsTest(unittest.TestCase):
         vj_ref, vk_ref = self.fftdf.get_jk(dm0, hermi=1, kpts=kpts)
         vj_sol, vk_sol = self.isdf.get_jk(dm0, hermi=1, kpts=kpts)
 
+        err_k = abs(vk_sol - vk_ref).max()
+        err_j = abs(vj_sol - vj_ref).max()
+
+        print(f"err_k: {err_k}, err_j: {err_j}")
+
         is_vj_close = numpy.allclose(vj_sol, vj_ref, atol=tol)
         self.assertTrue(is_vj_close)
 
@@ -69,6 +74,11 @@ class VjkKptsTest(unittest.TestCase):
 
         vj_ref, vk_ref = self.fftdf.get_jk(dm0, hermi=1, kpts=kpts)
         vj_sol, vk_sol = self.isdf.get_jk(dm0, hermi=1, kpts=kpts)
+
+        err_k = abs(vk_sol - vk_ref).max()
+        err_j = abs(vj_sol - vj_ref).max()
+
+        print(f"err_k: {err_k}, err_j: {err_j}")
 
         is_vj_close = numpy.allclose(vj_sol, vj_ref, atol=tol)
         self.assertTrue(is_vj_close)

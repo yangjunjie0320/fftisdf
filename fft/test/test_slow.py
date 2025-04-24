@@ -43,6 +43,8 @@ def setup(test_obj, cell=None, basis="gth-dzvp", ke_cutoff=40.0,
         1.000000000, 0.000000000, 0.000000000
         0.000000000, 1.000000000, 0.000000000
         0.000000000, 0.000000000, 2.000000000'''
+        cell.unit = 'B'
+        cell.verbose = 5
         cell.ke_cutoff = ke_cutoff
         cell.symmetry = False
         cell.build(dump_input=False)
@@ -79,6 +81,8 @@ def main(cell="diamond-unit-cell", kmesh=None):
         "cell": cell, "isdf_to_save": None,
     }
 
+    print(f"Testing {cell} with kmesh: {kmesh}")
+
     vjk_kpts_test = VjkKptsTest()
     setup(vjk_kpts_test, **kwargs)
     isdf_to_save = vjk_kpts_test.isdf._isdf_to_save
@@ -101,6 +105,5 @@ def main(cell="diamond-unit-cell", kmesh=None):
     
 if __name__ == "__main__":
     for kmesh in [[2, 2, 2], [3, 3, 3], [4, 4, 4]]:
-        print(f"\nTesting kmesh: {kmesh}")
         main(cell="he2-cubic-cell", kmesh=kmesh)
         
