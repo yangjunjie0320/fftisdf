@@ -85,6 +85,9 @@ class EriSpcTest(unittest.TestCase):
         err_rel = abs(eri_spc_ref - eri_spc_sol).max() / abs(eri_spc_ref).max()
         print("err_rel = ", err_rel)
 
+        t = tol + abs(eri_spc_ref).max() * tol
+        print("t = ", t, err_abs, err_rel)
+
         is_close = numpy.allclose(eri_spc_sol, eri_spc_ref, atol=tol, rtol=tol)
         self.assertTrue(is_close)
 
