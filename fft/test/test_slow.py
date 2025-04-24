@@ -60,7 +60,7 @@ if __name__ == "__main__":
 
         kwargs = {
             "basis": "gth-dzvp",
-            "ke_cutoff": 10.0, "kmesh": kmesh,
+            "ke_cutoff": 20.0, "kmesh": kmesh,
             "cell": "diamond-unit-cell",
             "isdf_to_save": None, "tol": 1e-6
         }
