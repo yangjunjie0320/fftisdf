@@ -9,9 +9,8 @@ import fft.isdf_ao2mo
 class EriKptsTest(unittest.TestCase):
     cell = None
 
-    def setUp(self, kmesh=None):
-        if kmesh is None:
-            kmesh = [1, 1, 3]
+    def setUp(self):
+        kmesh = [1, 1, 3]
         
         a = 2.0
         lv = numpy.diag([a, a, a * 2])
@@ -30,9 +29,12 @@ class EriKptsTest(unittest.TestCase):
         cell.build(dump_input=False)
 
         self.cell = cell
+        self.kmesh = kmesh
         self.kpts = cell.make_kpts(kmesh)
+        self.tol = 1e-6
 
         self.fftdf = pbc.df.FFTDF(cell, kpts=self.kpts)
+        
         self.isdf  = fft.ISDF(cell, kpts=self.kpts)
         g0 = cell.gen_uniform_grids(self.cell.mesh)
         inpx = self.isdf.select_inpx(g0=g0, kpts=self.kpts, tol=1e-30)
@@ -63,7 +65,7 @@ class EriKptsTest(unittest.TestCase):
             eri_ao_sol = eri_ao_7d[ki, kj, kk]
             eri_ao_sol = eri_ao_sol.reshape(*eri_ao_ref.shape)
 
-            is_close = numpy.allclose(eri_ao_sol, eri_ao_ref, atol=1e-6)
+            is_close = numpy.allclose(eri_ao_sol, eri_ao_ref, atol=self.tol)
             self.assertTrue(is_close)
 
     def test_fftisdf_get_ao_eri(self):
@@ -81,7 +83,7 @@ class EriKptsTest(unittest.TestCase):
             eri_ao_ref = self.fftdf.get_ao_eri([kpts[ki], kpts[kj], kpts[kk], kpts[km]], compact=False)
             eri_ao_sol = self.isdf.get_ao_eri([kpts[ki], kpts[kj], kpts[kk], kpts[km]],  compact=False)
 
-            is_close = numpy.allclose(eri_ao_sol, eri_ao_ref, atol=1e-6)
+            is_close = numpy.allclose(eri_ao_sol, eri_ao_ref, atol=self.tol)
             self.assertTrue(is_close)
 
     def test_fftisdf_eri_ao_7d(self):
@@ -100,7 +102,7 @@ class EriKptsTest(unittest.TestCase):
         eri_7d_sol = isdf_obj.ao2mo_7d(coeff_kpts, kpts=kpts)
         eri_7d_sol = eri_7d_sol.reshape(*eri_7d_ref.shape)
 
-        is_close = numpy.allclose(eri_7d_sol, eri_7d_ref, atol=1e-6)
+        is_close = numpy.allclose(eri_7d_sol, eri_7d_ref, atol=self.tol)
         self.assertTrue(is_close)
 
     def test_fftisdf_ao2mo_7d(self):
@@ -118,7 +120,7 @@ class EriKptsTest(unittest.TestCase):
         eri_7d_sol = isdf_obj.ao2mo_7d(coeff_kpts, kpts=kpts)
         eri_7d_sol = eri_7d_sol.reshape(*eri_7d_ref.shape)
 
-        is_close = numpy.allclose(eri_7d_sol, eri_7d_ref, atol=1e-6)
+        is_close = numpy.allclose(eri_7d_sol, eri_7d_ref, atol=self.tol)
         self.assertTrue(is_close)
 
 if __name__ == "__main__":
