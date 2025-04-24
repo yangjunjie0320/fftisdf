@@ -55,10 +55,6 @@ class VjkKptsTest(unittest.TestCase):
         err_k = abs(vk_sol - vk_ref).max()
         err_j = abs(vj_sol - vj_ref).max()
 
-        print(f"err_k: {err_k}, err_j: {err_j}")
-        print(f"vj_sol: {vj_sol.shape}")
-        print(f"vj_ref: {vj_ref.shape}")
-
         is_vj_close = numpy.allclose(vj_sol, vj_ref, atol=tol)
         self.assertTrue(is_vj_close)
 
@@ -79,8 +75,6 @@ class VjkKptsTest(unittest.TestCase):
 
         err_k = abs(vk_sol - vk_ref).max()
         err_j = abs(vj_sol - vj_ref).max()
-
-        print(f"err_k: {err_k}, err_j: {err_j}")
 
         is_vj_close = numpy.allclose(vj_sol, vj_ref, atol=tol)
         self.assertTrue(is_vj_close)

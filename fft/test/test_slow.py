@@ -29,7 +29,7 @@ def setup(test_obj, cell=None, basis="gth-dzvp", ke_cutoff=40.0,
         cell.verbose = 5
         cell.ke_cutoff = ke_cutoff
         cell.symmetry = False
-        cell.exp_to_discard = 0.2
+        cell.exp_to_discard = 0.1
         cell.build(dump_input=False)
 
     elif cell == "he2-cubic-cell":
@@ -48,7 +48,7 @@ def setup(test_obj, cell=None, basis="gth-dzvp", ke_cutoff=40.0,
         cell.verbose = 5
         cell.ke_cutoff = ke_cutoff
         cell.symmetry = False
-        cell.exp_to_discard = 0.2
+        cell.exp_to_discard = 0.1
         cell.build(dump_input=False)
         
     assert isinstance(cell, Cell)
