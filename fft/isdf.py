@@ -18,8 +18,6 @@ from pyscf.lib.scipy_helper import pivoted_cholesky
 
 # pyscf.pbc
 from pyscf.pbc import tools as pbctools
-from pyscf.pbc.tools.pbc import fft, ifft
-
 from pyscf.pbc.df.aft import _check_kpts
 from pyscf.pbc.df.fft import FFTDF
 
@@ -187,9 +185,8 @@ class InterpolativeSeparableDensityFitting(FFTDF):
             blksize = max(blksize, 1)
         
         blksize = min(blksize, ngrid)
-
-        from h5py import File
-        self._fswap = File(self._tmpfile, "w") if blksize < ngrid else None
+        if self._fswap is None and blksize < ngrid:
+            self._fswap = h5py.File(self._tmpfile, "w")
         
         eta_kpt = None
         if self._fswap is None:
@@ -251,10 +248,9 @@ class InterpolativeSeparableDensityFitting(FFTDF):
             vq = pbctools.get_coulG(cell, k=kpts[q], Gv=v0, mesh=mesh)
             vq *= cell.vol / ngrid
 
-            from pyscf.pbc.tools.pbc import fft, ifft
             lq = eta_kpt[q].T * fq
-            wq = fft(lq, mesh)
-            rq = ifft(wq * vq, mesh)
+            wq = pbctools.fft(lq, mesh)
+            rq = pbctools.ifft(wq * vq, mesh)
             kern_q = lib.dot(lq, rq.conj().T)
 
             metx_q = metx_kpt[q]
