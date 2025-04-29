@@ -138,13 +138,15 @@ def ao2mo_spc(df_obj, mo_coeff_kpts, kpts=None):
 
     eri_spc = numpy.zeros((dl, dr))
     for q in range(nkpt):
+        coul_q = coul_kpt[q]
         lhs_q = lhs_kpt[q].reshape(nip, -1)
         rhs_q = rhs_kpt[q].reshape(nip, -1)
 
-        coul_q = coul_kpt[q]
-        eri_q = reduce(lib.dot, (lhs_q.T, coul_q, rhs_q.conj()))
+        # eri_q = reduce(lib.dot, (lhs_q.T, coul_q, rhs_q.conj()))
+        eri_q = lhs_q.T @ coul_q @ rhs_q.conj()
         eri_q = eri_q.real * nspc
         eri_spc += eri_q
+    
     return eri_spc
 
 def ao2mo_spc_slow(df_obj, mo_coeff_kpts, kpts=None):

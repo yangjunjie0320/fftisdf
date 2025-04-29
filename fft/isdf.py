@@ -247,15 +247,14 @@ class InterpolativeSeparableDensityFitting(FFTDF):
             fq = numpy.exp(-1j * coords @ kpts[q])
             vq = pbctools.get_coulG(cell, k=kpts[q], Gv=v0, mesh=mesh)
             vq *= cell.vol / ngrid
-
             lq = eta_kpt[q].T * fq
             wq = pbctools.fft(lq, mesh)
             rq = pbctools.ifft(wq * vq, mesh)
             kern_q = lib.dot(lq, rq.conj().T)
+            lq = rq = wq = None
 
             metx_q = metx_kpt[q]
             coul_q = lstsq(metx_q, kern_q, tol=tol2)
-
             coul_kpt[q] = coul_q
             log.timer(info % (q + 1), *t0)
 
