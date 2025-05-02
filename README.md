@@ -10,7 +10,7 @@ conda env create --file=environment.yml --name=fftisdf
 conda activate fftisdf
 ```
 
-Then activate the conda environment, add the current directory to the PYTHONPATH.
+Then activate the `conda` environment, add the current directory to the `PYTHONPATH`.
 
 ```bash
 export PYTHONPATH=$PWD:$PYTHONPATH

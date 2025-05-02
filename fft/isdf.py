@@ -40,9 +40,10 @@ def contract(f_kpt, g_kpt, phase):
     assert f_kpt.shape == (nk, m, n)
     assert g_kpt.shape == (nk, l, n)
 
-    # kmn,knl -> kml
+    # kmn,kln -> kml
     t_kpt = f_kpt.conj() @ g_kpt.transpose(0, 2, 1)
     t_kpt = t_kpt.reshape(nk, m, l)
+    
     t_spc = kpt_to_spc(t_kpt, phase)
 
     # smn,smn -> smn
@@ -109,7 +110,7 @@ def select_inpx(df_obj, g0=None, c0=None, kpts=None, tol=1e-10):
 class InterpolativeSeparableDensityFitting(FFTDF):
     wrap_around = False
     tol = 1e-8
-    blksize = None
+    blksize = 40000
     c0 = None
     _keys = {"blksize", "tol", "c0", "blksize", "wrap_around"}
 
@@ -179,12 +180,9 @@ class InterpolativeSeparableDensityFitting(FFTDF):
         ngrid = grids.coords.shape[0]
         nkpt, nip, nao = inpv_kpt.shape
 
-        blksize = self.blksize
-        if blksize is None:
-            blksize = int(max_memory * 1e6 * 0.2) // (nkpt * nip * 16)
-            blksize = max(blksize, 1)
-        
-        blksize = min(blksize, ngrid)
+        blksize = int(max_memory * 1e6 * 0.2) // (nkpt * nip * 16)
+        blksize = max(blksize, 1)
+        blksize = min(self.blksize, blksize, ngrid)
         if self._fswap is None and blksize < ngrid:
             self._fswap = h5py.File(self._tmpfile, "w")
         
@@ -250,7 +248,7 @@ class InterpolativeSeparableDensityFitting(FFTDF):
             lq = eta_kpt[q].T * fq
             wq = pbctools.fft(lq, mesh)
             rq = pbctools.ifft(wq * vq, mesh)
-            kern_q = lib.dot(lq, rq.conj().T)
+            kern_q = lq @ rq.conj().T
             lq = rq = wq = None
 
             metx_q = metx_kpt[q]
