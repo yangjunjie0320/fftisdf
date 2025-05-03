@@ -1,15 +1,13 @@
 name: fftisdf
-channels:
-  - defaults
-  - conda-forge
 dependencies:
   - python=3.10
   - blas=*=mkl       
   - mkl 
   - numpy
   - scipy
-  - h5py
-  - hdf5
+  - h5py::conda-forge
+  - hdf5::conda-forge
   - pip
   - pip:
     - pyscf
+
