@@ -2,7 +2,7 @@
 #include <stdlib.h>
 #include <complex.h>
 #include <cblas.h> // Requires linking with a BLAS library (e.g., -lopenblas or MKL)
-// #include <omp.h>   // Include OpenMP header
+#include <omp.h>   // Include OpenMP header
 
 void contract(
     complex double* x_kpt_out, // Output: nk * m * l
@@ -17,17 +17,54 @@ void contract(
     const complex double beta = 0.0 + 0.0 * I;
 
     // --- Allocate Temporaries ---
+    // complex double* f_kpt_conj = (complex double*) malloc(nk * m * n * sizeof(complex double));
     complex double* t_kpt = (complex double*) malloc(nk * m * l * sizeof(complex double));
     complex double* t_spc = (complex double*) malloc(ns * m * l * sizeof(complex double));
     complex double* x_spc = (complex double*) malloc(ns * m * l * sizeof(complex double));
 
+    if (f_kpt == NULL || g_kpt == NULL || phase == NULL || x_kpt_out == NULL) {
+        printf("Error: One or more input arrays are NULL.\n");
+        return;
+    }
+
+    if (nk == 1) { // Special case for nk = 1
+        const complex double* fk = f_kpt;
+        const complex double* gk = g_kpt;
+        complex double*       tk = t_kpt;
+        cblas_zgemm(
+            CblasRowMajor, CblasNoTrans, CblasTrans,
+            m, l, n, &alph, fk, n, gk, n, &beta, tk, l
+        );
+
+        #pragma omp parallel for
+        for (int i = 0; i < ns * m * l; ++i) {
+            t_spc[i] = t_kpt[i];
+        }
+
+        #pragma omp parallel for
+        for (int i = 0; i < ns * m * l; ++i) {
+            x_spc[i] = creal(t_spc[i]) * creal(t_spc[i]) + beta;
+        }
+
+        #pragma omp parallel for
+        for (int i = 0; i < nk * m * l; ++i) {
+            x_kpt_out[i] = x_spc[i];
+        }
+
+        free(t_kpt);
+        free(t_spc);
+        free(x_spc);
+        return;
+    }
+
     // --- Step 1: Compute t_kpt = f_kpt.conj() @ g_kpt.T ---
+    #pragma omp parallel for
     for (int k = 0; k < nk; ++k) {
         const complex double* fk = f_kpt + k * m * n;
         const complex double* gk = g_kpt + k * l * n;
         complex double*       tk = t_kpt + k * m * l;
         cblas_zgemm(
-            CblasRowMajor, CblasConjNoTrans, CblasTrans,
+            CblasRowMajor, CblasNoTrans, CblasTrans,
             m, l, n, &alph, fk, n, gk, n, &beta, tk, l
         );
     }
@@ -43,9 +80,9 @@ void contract(
 
     // --- Step 3: Compute x_spc = t_spc * t_spc ---
     // Element-wise square
-    #pragma omp parallel for // Parallelize this loop
+    #pragma omp parallel for
     for (int i = 0; i < ns * m * l; ++i) {
-        x_spc[i] = t_spc[i] * t_spc[i];
+        x_spc[i] = creal(t_spc[i]) * creal(t_spc[i]) + beta;
     }
 
     // --- Step 4: Compute x_kpt = phase.conj().T @ x_spc ---

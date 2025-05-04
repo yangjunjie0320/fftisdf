@@ -21,9 +21,9 @@ from pyscf.pbc import tools as pbctools
 from pyscf.pbc.df.aft import _check_kpts
 from pyscf.pbc.df.fft import FFTDF
 
+from fft.lib.contract import contract_v1 as contract
 from fft.isdf_jk import get_k_kpts
 from fft.isdf_jk import get_phase, kpts_to_kmesh
-from fft.isdf_jk import spc_to_kpt, kpt_to_spc
 
 PARENT_GRID_MAXSIZE = getattr(__config__, "isdf_parent_grid_maxsize", 10000)
 
@@ -33,23 +33,6 @@ PARENT_GRID_MAXSIZE = getattr(__config__, "isdf_parent_grid_maxsize", 10000)
 # *_full: full array, shapes as (nspc * x, nspc * x)
 # *_k1, *_k2: the k-space array at specified k-point
 
-def contract(f_kpt, g_kpt, phase):
-    """Contract two k-space arrays."""
-    nk, m, n = f_kpt.shape
-    l = g_kpt.shape[1]
-    assert f_kpt.shape == (nk, m, n)
-    assert g_kpt.shape == (nk, l, n)
-
-    # kmn,kln -> kml
-    t_kpt = f_kpt.conj() @ g_kpt.transpose(0, 2, 1)
-    t_kpt = t_kpt.reshape(nk, m, l)
-    
-    t_spc = kpt_to_spc(t_kpt, phase)
-
-    # smn,smn -> smn
-    x_spc = t_spc * t_spc
-    x_kpt = spc_to_kpt(x_spc, phase)
-    return x_kpt
 
 def lstsq(a, b, tol=1e-10):
     u, s, vh = svd(a, full_matrices=False)
@@ -110,7 +93,7 @@ def select_inpx(df_obj, g0=None, c0=None, kpts=None, tol=1e-10):
 class InterpolativeSeparableDensityFitting(FFTDF):
     wrap_around = False
     tol = 1e-8
-    blksize = 40000
+    blksize = 10000
     c0 = None
     _keys = {"blksize", "tol", "c0", "blksize", "wrap_around"}
 
@@ -207,16 +190,23 @@ class InterpolativeSeparableDensityFitting(FFTDF):
         aoR_loop = self.aoR_loop(grids, kpts, 0, blksize=blksize)
         for ao_etc_kpt, g0, g1 in aoR_loop:
             t0 = (process_clock(), perf_counter())
-            ao_kpt = numpy.asarray(ao_etc_kpt[0])
+            ao_kpt = numpy.asarray(ao_etc_kpt[0], dtype=numpy.complex128)
 
             # eta_kpt_g0g1: (nkpt, nip, g1 - g0)
-            eta_kpt_g0g1 = contract(inpv_kpt, ao_kpt, phase)
+            from fft.lib.contract import contract_v1
+            from fft.lib.contract import contract_v2
+            eta_kpt_g0g1_ref = contract_v1(inpv_kpt, ao_kpt, phase)
+            eta_kpt_g0g1_sol = contract_v2(inpv_kpt, ao_kpt, phase)
+            err = abs(eta_kpt_g0g1_ref - eta_kpt_g0g1_sol).max()
+            print(f"err = {err}")
+            eta_kpt_g0g1 = eta_kpt_g0g1_ref
             eta_kpt_g0g1 = eta_kpt_g0g1.transpose(0, 2, 1)
 
             eta_kpt[:, g0:g1, :] = eta_kpt_g0g1
             eta_kpt_g0g1 = None
 
             log.timer(info % (g0, g1), *t0)
+        assert 1 == 2
 
         return eta_kpt
 
