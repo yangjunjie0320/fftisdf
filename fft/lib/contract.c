@@ -38,7 +38,7 @@ void contract(
 
         #pragma omp parallel for
         for (int i = 0; i < ns * m * l; ++i) {
-            t_spc[i] = t_kpt[i];
+            t_spc[i] = t_kpt[i] * phase[0];
         }
 
         #pragma omp parallel for
@@ -48,7 +48,7 @@ void contract(
 
         #pragma omp parallel for
         for (int i = 0; i < nk * m * l; ++i) {
-            x_kpt_out[i] = x_spc[i];
+            x_kpt_out[i] = x_spc[i] * conj(phase[0]);
         }
 
         free(t_kpt);

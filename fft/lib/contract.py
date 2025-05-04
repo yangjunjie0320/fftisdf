@@ -34,9 +34,6 @@ def contract_v2(f_kpt, g_kpt, phase):
 
     assert f_kpt.shape == (nk, m, n)
     assert g_kpt.shape == (nk, l, n)
-
-    print(f_kpt.shape, g_kpt.shape, phase.shape)
-    print(f_kpt.dtype, g_kpt.dtype, phase.dtype)
     
     # compile the C code with mkl and openmp
     """
@@ -53,9 +50,6 @@ def contract_v2(f_kpt, g_kpt, phase):
     func = getattr(libfftisdf, 'contract', None)
     assert func is not None
 
-    print(f"nk = {nk}")
-    print(f"phase = {phase}")
-
     f_kpt_conj = f_kpt.conj()
     x_kpt = numpy.zeros((nk, m, l), dtype=numpy.complex128)
     func(
@@ -66,6 +60,7 @@ def contract_v2(f_kpt, g_kpt, phase):
         ctypes.c_int(nk), ctypes.c_int(m), 
         ctypes.c_int(n), ctypes.c_int(l)
     )
+
     return x_kpt
 
 contract = contract_v2

@@ -21,7 +21,7 @@ from pyscf.pbc import tools as pbctools
 from pyscf.pbc.df.aft import _check_kpts
 from pyscf.pbc.df.fft import FFTDF
 
-from fft.lib.contract import contract_v1 as contract
+from fft.lib.contract import contract
 from fft.isdf_jk import get_k_kpts
 from fft.isdf_jk import get_phase, kpts_to_kmesh
 
@@ -166,8 +166,11 @@ class InterpolativeSeparableDensityFitting(FFTDF):
         blksize = int(max_memory * 1e6 * 0.2) // (nkpt * nip * 16)
         blksize = max(blksize, 1)
         blksize = min(self.blksize, blksize, ngrid)
+
         if self._fswap is None and blksize < ngrid:
             self._fswap = h5py.File(self._tmpfile, "w")
+
+        if blksize < ngrid:
             blknum = (ngrid + blksize - 1) // blksize
             blksize = ngrid // blknum + 1
         
@@ -193,20 +196,13 @@ class InterpolativeSeparableDensityFitting(FFTDF):
             ao_kpt = numpy.asarray(ao_etc_kpt[0], dtype=numpy.complex128)
 
             # eta_kpt_g0g1: (nkpt, nip, g1 - g0)
-            from fft.lib.contract import contract_v1
-            from fft.lib.contract import contract_v2
-            eta_kpt_g0g1_ref = contract_v1(inpv_kpt, ao_kpt, phase)
-            eta_kpt_g0g1_sol = contract_v2(inpv_kpt, ao_kpt, phase)
-            err = abs(eta_kpt_g0g1_ref - eta_kpt_g0g1_sol).max()
-            print(f"err = {err}")
-            eta_kpt_g0g1 = eta_kpt_g0g1_ref
+            eta_kpt_g0g1 = contract(inpv_kpt, ao_kpt, phase)
             eta_kpt_g0g1 = eta_kpt_g0g1.transpose(0, 2, 1)
 
             eta_kpt[:, g0:g1, :] = eta_kpt_g0g1
             eta_kpt_g0g1 = None
 
             log.timer(info % (g0, g1), *t0)
-        assert 1 == 2
 
         return eta_kpt
 
