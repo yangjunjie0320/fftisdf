@@ -185,6 +185,8 @@ class InterpolativeSeparableDensityFitting(FFTDF):
         blksize = min(self.blksize, blksize, ngrid)
         if self._fswap is None and blksize < ngrid:
             self._fswap = h5py.File(self._tmpfile, "w")
+            blknum = (ngrid + blksize - 1) // blksize
+            blksize = ngrid // blknum + 1
         
         eta_kpt = None
         if self._fswap is None:
