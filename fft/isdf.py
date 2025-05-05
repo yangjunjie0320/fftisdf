@@ -93,9 +93,8 @@ def select_inpx(df_obj, g0=None, c0=None, kpts=None, tol=1e-10):
 class InterpolativeSeparableDensityFitting(FFTDF):
     wrap_around = False
     tol = 1e-8
-    blksize = 10000
     c0 = None
-    _keys = {"blksize", "tol", "c0", "blksize", "wrap_around"}
+    _keys = {"tol", "c0", "wrap_around"}
 
     def __init__(self, cell, kpts=numpy.zeros((1, 3))):
         FFTDF.__init__(self, cell, kpts)
@@ -119,7 +118,6 @@ class InterpolativeSeparableDensityFitting(FFTDF):
         log.info("tol = %s", self.tol)
         log.info("c0 = %s", self.c0)
         log.info("wrap_around = %s", self.wrap_around)
-        log.info("blksize = %s", self.blksize)
         log.info("isdf_to_save = %s", self._isdf_to_save)
         return self
 
@@ -164,10 +162,10 @@ class InterpolativeSeparableDensityFitting(FFTDF):
         nkpt, nip, nao = inpv_kpt.shape
 
         blksize = int(max_memory * 1e6 * 0.2) // (nkpt * nip * 16)
-        blksize = max(blksize, 1)
-        blksize = min(self.blksize, blksize, ngrid)
+        blksize = min(blksize, ngrid)
+        blksize = max(blksize, 10)
 
-        if self._fswap is None and blksize < ngrid:
+        if self._fswap is None and self._tmpfile is not None and blksize < ngrid:
             self._fswap = h5py.File(self._tmpfile, "w")
 
         if blksize < ngrid:
