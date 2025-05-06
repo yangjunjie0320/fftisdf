@@ -321,7 +321,9 @@ class InterpolativeSeparableDensityFitting(FFTDF):
             self.save(isdf_to_save)
 
         if self._fswap is not None:
+            fswap = self._fswap.filename
             self._fswap.close()
+            assert not os.path.exists(fswap)
     
     def save(self, isdf_to_save=None):
         log = logger.new_logger(self, self.verbose)

@@ -32,9 +32,11 @@ class WithMPI(fft.isdf.ISDF):
         self._comm = comm
         comm.barrier()
 
-        fswap = self._comm.bcast(self._fswap.filename, root=0)
+        fswap = self._fswap.filename
         self._fswap.close()
+        assert not os.path.exists(fswap)
 
+        fswap = self._comm.bcast(fswap, root=0)
         self._fswap = lib.H5TmpFile(fswap, "w", driver="mpio", comm=comm)
         comm.barrier()
 
