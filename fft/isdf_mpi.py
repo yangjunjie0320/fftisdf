@@ -49,15 +49,25 @@ class WithMPI(fft.isdf.ISDF):
         self._fswap = lib.H5TmpFile(fswap, "w", driver="mpio", comm=comm)
         comm.barrier()
 
-    def save(self, isdf_to_save=None):
+    def _finalize(self, isdf_to_save=None):
         log = logger.new_logger(self, self.verbose)
         comm = self._comm
+        rank = comm.Get_rank()
         comm.barrier()
 
-        rank = comm.Get_rank()
-        size = comm.Get_size()
+        if self._fswap is not None:
+            fswap = self._fswap.filename
+            self._fswap.close()
+            self._fswap = None
+        comm.barrier()
 
         if rank == 0:
+            if os.path.exists(fswap):
+                os.remove(fswap)
+
+            assert not os.path.exists(fswap)
+            log.debug("Successfully removed swap file %s", fswap)
+
             inpv_kpt = self._inpv_kpt
             coul_kpt = self._coul_kpt
             assert inpv_kpt is not None

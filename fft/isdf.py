@@ -314,27 +314,29 @@ class InterpolativeSeparableDensityFitting(FFTDF):
         # [Step 4]: save the results
         self._inpv_kpt = inpv_kpt
         self._coul_kpt = coul_kpt
-
-        if self._isdf_to_save is not None:
-            isdf_to_save = self._isdf_to_save
-            self._isdf = isdf_to_save
-            self.save(isdf_to_save)
+        self._finalize()
+    
+    def _finalize(self):
+        log = logger.new_logger(self, self.verbose)
 
         if self._fswap is not None:
             fswap = self._fswap.filename
             self._fswap.close()
             self._fswap = None
 
+            if os.path.exists(fswap):
+                os.remove(fswap)
+            
             assert not os.path.exists(fswap)
             log.debug("Successfully removed swap file %s", fswap)
-    
-    def save(self, isdf_to_save=None):
-        log = logger.new_logger(self, self.verbose)
 
         inpv_kpt = self._inpv_kpt
         coul_kpt = self._coul_kpt
         assert inpv_kpt is not None
         assert coul_kpt is not None
+
+        isdf_to_save = self._isdf_to_save
+        assert isdf_to_save is not None
 
         dump(isdf_to_save, "inpv_kpt", inpv_kpt)
         dump(isdf_to_save, "coul_kpt", coul_kpt)
