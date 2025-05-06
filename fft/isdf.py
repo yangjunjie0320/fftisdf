@@ -1,5 +1,4 @@
 import os, sys, h5py
-from tempfile import NamedTemporaryFile
 from functools import reduce
 
 import numpy, scipy
@@ -25,7 +24,8 @@ from fft.isdf_jk import get_k_kpts
 from fft.isdf_jk import get_phase, kpts_to_kmesh
 from fft.isdf_jk import spc_to_kpt, kpt_to_spc
 
-PARENT_GRID_MAXSIZE = getattr(__config__, "isdf_parent_grid_maxsize", 10000)
+PARENT_GRID_SIZE_MAX = getattr(__config__, "isdf_parent_grid_size_max", 40000)
+CONTRACT_BLKSIZE_MAX = getattr(__config__, "isdf_contract_blksize_max", 40000)
 
 # Naming convention:
 # *_kpt: k-space array, which shapes as (nkpt, x, x)
@@ -110,19 +110,16 @@ def select_inpx(df_obj, g0=None, c0=None, kpts=None, tol=1e-10):
 class InterpolativeSeparableDensityFitting(FFTDF):
     wrap_around = False
     tol = 1e-8
-    blksize = 40000
-    c0 = None
-    _keys = {"blksize", "tol", "c0", "blksize", "wrap_around"}
+    c0 = 20.0
+    _keys = {"tol", "c0", "wrap_around"}
 
     def __init__(self, cell, kpts=numpy.zeros((1, 3))):
         FFTDF.__init__(self, cell, kpts)
 
-        self._tmp = NamedTemporaryFile(dir=lib.param.TMPDIR)
-        self._tmpfile = self._tmp.name
-        self._fswap = None
+        self._fswap = lib.H5TmpFile()
 
         self._isdf = None
-        self._isdf_to_save = NamedTemporaryFile(dir=lib.param.TMPDIR).name
+        self._isdf_to_save = None
 
         self._coul_kpt = None
         self._inpv_kpt = None
@@ -136,8 +133,8 @@ class InterpolativeSeparableDensityFitting(FFTDF):
         log.info("tol = %s", self.tol)
         log.info("c0 = %s", self.c0)
         log.info("wrap_around = %s", self.wrap_around)
-        log.info("blksize = %s", self.blksize)
-        log.info("isdf_to_save = %s", self._isdf_to_save)
+        if self._isdf_to_save is not None:
+            log.info("isdf_to_save = %s", self._isdf_to_save)
         return self
 
     select_inpx = select_inpx
@@ -153,8 +150,8 @@ class InterpolativeSeparableDensityFitting(FFTDF):
         if inpx is None:
             m0 = numpy.asarray(mesh)
             c0 = self.c0
-            if numpy.prod(m0) > PARENT_GRID_MAXSIZE:
-                f = PARENT_GRID_MAXSIZE / numpy.prod(m0)
+            if numpy.prod(m0) > PARENT_GRID_SIZE_MAX:
+                f = PARENT_GRID_SIZE_MAX / numpy.prod(m0)
                 m0 = numpy.floor(m0 * f ** (1/3) * 0.5)
                 m0 = (m0 * 2 + 1).astype(int)
                 log.info("Original mesh %s is too large, reduced to %s as parent grid.", mesh, m0)
@@ -163,6 +160,7 @@ class InterpolativeSeparableDensityFitting(FFTDF):
         else:
             log.debug("Using pre-computed interpolating vectors, c0 is not used")
 
+        log.info("Number of interpolating points is %d.", inpx.shape[0])
         inpv_kpt = cell.pbc_eval_gto("GTOval", inpx, kpts=kpts)
         inpv_kpt = numpy.asarray(inpv_kpt, dtype=numpy.complex128)
         return inpv_kpt
@@ -180,16 +178,17 @@ class InterpolativeSeparableDensityFitting(FFTDF):
         ngrid = grids.coords.shape[0]
         nkpt, nip, nao = inpv_kpt.shape
 
-        blksize = int(max_memory * 1e6 * 0.2) // (nkpt * nip * 16)
+        blksize = int(max_memory * 1e6 * 0.1) // (nkpt * nip * 16)
         blksize = max(blksize, 1)
-        blksize = min(self.blksize, blksize, ngrid)
-        if self._fswap is None and blksize < ngrid:
-            self._fswap = h5py.File(self._tmpfile, "w")
+        blksize = min(CONTRACT_BLKSIZE_MAX, blksize, ngrid)
+
+        fswap = self._fswap
+        if blksize < ngrid:
             blknum = (ngrid + blksize - 1) // blksize
             blksize = ngrid // blknum + 1
         
         eta_kpt = None
-        if self._fswap is None:
+        if fswap is None:
             log.debug("\nIn-core version is used for eta_kpt.")
             log.debug("memory required: %6.2e GB", nkpt * nip * 16 * ngrid / 1e9)
             log.debug("max_memory: %6.2e GB", max_memory / 1e3)
@@ -197,17 +196,18 @@ class InterpolativeSeparableDensityFitting(FFTDF):
         else:
             log.debug("\nOut-core version is used for eta_kpt.")
             log.debug("disk space required: %6.2e GB.", nkpt * nip * 16 * ngrid / 1e9)
+            log.debug("blksize = %d, ngrid = %d", blksize, ngrid)
             log.debug("memory needed for each block:   %6.2e GB", nkpt * nip * 16 * blksize / 1e9)
             log.debug("memory needed for each k-point: %6.2e GB", nip * ngrid * 16 / 1e9)
             log.debug("max_memory: %6.2e GB", max_memory / 1e3)
-            eta_kpt = self._fswap.create_dataset("eta_kpt", shape=(nkpt, ngrid, nip), dtype=numpy.complex128)
+            eta_kpt = fswap.create_dataset("eta_kpt", shape=(nkpt, ngrid, nip), dtype=numpy.complex128)
         
         log.debug("\nComputing eta_kpt")
         info = (lambda s: f"eta_kpt[ %{len(s)}d: %{len(s)}d]")(str(ngrid))
         aoR_loop = self.aoR_loop(grids, kpts, 0, blksize=blksize)
         for ao_etc_kpt, g0, g1 in aoR_loop:
             t0 = (process_clock(), perf_counter())
-            ao_kpt = numpy.asarray(ao_etc_kpt[0])
+            ao_kpt = numpy.asarray(ao_etc_kpt[0], dtype=numpy.complex128)
 
             # eta_kpt_g0g1: (nkpt, nip, g1 - g0)
             eta_kpt_g0g1 = contract(inpv_kpt, ao_kpt, phase)
