@@ -49,7 +49,7 @@ class WithMPI(fft.isdf.ISDF):
         self._fswap = lib.H5TmpFile(fswap, "w", driver="mpio", comm=comm)
         comm.barrier()
 
-    def _finalize(self, isdf_to_save=None):
+    def _finalize(self):
         log = logger.new_logger(self, self.verbose)
         comm = self._comm
         rank = comm.Get_rank()
@@ -73,11 +73,13 @@ class WithMPI(fft.isdf.ISDF):
             assert inpv_kpt is not None
             assert coul_kpt is not None
 
-            dump(isdf_to_save, "inpv_kpt", inpv_kpt)
-            dump(isdf_to_save, "coul_kpt", coul_kpt)
-
-            nbytes = inpv_kpt.nbytes + coul_kpt.nbytes
-            log.info("ISDF results are saved to %s, size = %d MB", isdf_to_save, nbytes / 1e6)
+            isdf_to_save = self._isdf_to_save
+            if isdf_to_save is not None:
+                self._isdf = isdf_to_save
+                dump(isdf_to_save, "inpv_kpt", inpv_kpt)
+                dump(isdf_to_save, "coul_kpt", coul_kpt)
+                nbytes = inpv_kpt.nbytes + coul_kpt.nbytes
+                log.info("ISDF results are saved to %s, size = %d MB", isdf_to_save, nbytes / 1e6)
 
         comm.barrier()
 

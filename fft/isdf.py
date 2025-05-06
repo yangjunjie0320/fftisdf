@@ -336,13 +336,12 @@ class InterpolativeSeparableDensityFitting(FFTDF):
         assert coul_kpt is not None
 
         isdf_to_save = self._isdf_to_save
-        assert isdf_to_save is not None
-
-        dump(isdf_to_save, "inpv_kpt", inpv_kpt)
-        dump(isdf_to_save, "coul_kpt", coul_kpt)
-
-        nbytes = inpv_kpt.nbytes + coul_kpt.nbytes
-        log.info("ISDF results are saved to %s, size = %d MB", isdf_to_save, nbytes / 1e6)
+        if isdf_to_save is not None:
+            self._isdf = isdf_to_save
+            dump(isdf_to_save, "inpv_kpt", inpv_kpt)
+            dump(isdf_to_save, "coul_kpt", coul_kpt)
+            nbytes = inpv_kpt.nbytes + coul_kpt.nbytes
+            log.info("ISDF results are saved to %s, size = %d MB", isdf_to_save, nbytes / 1e6)
 
     def aoR_loop(self, grids=None, kpts=None, deriv=0, blksize=None):
         if grids is None:
