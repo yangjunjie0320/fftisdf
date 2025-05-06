@@ -29,14 +29,23 @@ class WithMPI(fft.isdf.ISDF):
         if comm is None:
             from mpi4py import MPI
             comm = MPI.COMM_WORLD
+
         self._comm = comm
+        size = comm.Get_size()
+        rank = comm.Get_rank()
         comm.barrier()
 
         fswap = self._fswap.filename
+        print("fswap", fswap)
         self._fswap.close()
         assert not os.path.exists(fswap)
+        print("fswap has been closed and removed")
 
         fswap = self._comm.bcast(fswap, root=0)
+        print("new fswap", fswap)
+        print("rank", rank)
+        comm.barrier()
+
         self._fswap = lib.H5TmpFile(fswap, "w", driver="mpio", comm=comm)
         comm.barrier()
 
