@@ -19,7 +19,6 @@ from fft.isdf import contract, lstsq
 from fft.isdf import kpts_to_kmesh
 
 from pyscf import __config__
-PARENT_GRID_SIZE_MAX = getattr(__config__, "isdf_parent_grid_size_max", 40000)
 CONTRACT_BLKSIZE_MAX = getattr(__config__, "isdf_contract_blksize_max", 40000)
 
 class WithMPI(fft.isdf.ISDF):
@@ -36,14 +35,10 @@ class WithMPI(fft.isdf.ISDF):
         comm.barrier()
 
         fswap = self._fswap.filename
-        print("fswap", fswap)
         self._fswap.close()
         assert not os.path.exists(fswap)
-        print("fswap has been closed and removed")
 
         fswap = self._comm.bcast(fswap, root=0)
-        print("new fswap", fswap)
-        print("rank", rank)
         comm.barrier()
 
         self._fswap = lib.H5TmpFile(fswap, "w", driver="mpio", comm=comm)
