@@ -323,7 +323,10 @@ class InterpolativeSeparableDensityFitting(FFTDF):
         if self._fswap is not None:
             fswap = self._fswap.filename
             self._fswap.close()
+            self._fswap = None
+
             assert not os.path.exists(fswap)
+            log.info("Successfully removed swap file %s", fswap)
     
     def save(self, isdf_to_save=None):
         log = logger.new_logger(self, self.verbose)
