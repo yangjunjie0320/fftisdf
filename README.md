@@ -53,4 +53,3 @@ Then run the tests.
 ```bash
 pytest
 ```
-# fftisdf-for-dmet
