@@ -16,15 +16,16 @@ def setup(test_obj, cell=None, basis="gth-dzvp", ke_cutoff=40.0,
     if cell == "diamond-unit-cell":
         cell = Cell()
         cell.atom = ''' 
-        C 0.000000000000   0.000000000000   0.000000000000
-        C 1.685068664391   1.685068664391   1.685068664391
+        C 0.0000 0.0000 0.0000
+        C 0.8917 0.8917 0.8917
         '''
         cell.basis = basis
         cell.pseudo = 'gth-pbe'
         cell.a = ''' 
-        0.000000000, 3.370137329, 3.370137329
-        3.370137329, 0.000000000, 3.370137329
-        3.370137329, 3.370137329, 0.000000000'''
+        0.0000 1.7834 1.7834
+        1.7834 0.0000 1.7834
+        1.7834 1.7834 0.0000
+        '''
         cell.unit = 'A' 
         cell.verbose = 5
         cell.ke_cutoff = ke_cutoff
@@ -35,15 +36,16 @@ def setup(test_obj, cell=None, basis="gth-dzvp", ke_cutoff=40.0,
     elif cell == "he2-cubic-cell":
         cell = Cell()
         cell.atom = '''
-        He 1.000000000000   1.000000000000   1.000000000000
-        He 1.000000000000   1.000000000000   2.000000000000
+        He 1.0000 1.0000 1.0000
+        He 1.0000 1.0000 2.0000
         '''
         cell.basis = basis
         cell.pseudo = 'gth-pbe'
         cell.a = '''
-        2.000000000, 0.000000000, 0.000000000
-        0.000000000, 2.000000000, 0.000000000
-        0.000000000, 0.000000000, 3.000000000'''
+        2.0000 0.0000 0.0000
+        0.0000 2.0000 0.0000
+        0.0000 0.0000 3.0000
+        '''
         cell.unit = 'A'
         cell.verbose = 5
         cell.ke_cutoff = ke_cutoff
@@ -68,7 +70,7 @@ def setup(test_obj, cell=None, basis="gth-dzvp", ke_cutoff=40.0,
         inpx = None
     else:
         g0 = cell.gen_uniform_grids(cell.mesh)
-        inpx = test_obj.isdf.select_inpx(g0=g0, kpts=kpts, tol=1e-30)
+        inpx = test_obj.isdf.select_inpx(g0=g0, c0=20.0, kpts=kpts, tol=1e-30)
         test_obj.isdf.tol = 1e-8
     test_obj.isdf.build(inpx=inpx)
 
