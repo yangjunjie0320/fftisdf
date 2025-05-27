@@ -61,6 +61,27 @@ class VjkKptsTest(unittest.TestCase):
         is_vk_close = numpy.allclose(vk_sol, vk_ref, atol=tol)
         self.assertTrue(is_vk_close)
 
+    def test_krhf_vjk_kpts_ewald(self):
+        cell = self.cell
+        kpts = self.kpts
+        kmesh = self.kmesh
+        tol = self.tol
+        
+        krhf = pyscf.pbc.scf.KRHF(cell, kpts=kpts)
+        dm0 = krhf.get_init_guess(key="minao")
+        
+        vj_ref, vk_ref = self.fftdf.get_jk(dm0, hermi=1, kpts=kpts, exxdiv="ewald")
+        vj_sol, vk_sol = self.isdf.get_jk(dm0, hermi=1, kpts=kpts, exxdiv="ewald")
+        
+        err_k = abs(vk_sol - vk_ref).max()
+        err_j = abs(vj_sol - vj_ref).max()
+        
+        is_vj_close = numpy.allclose(vj_sol, vj_ref, atol=tol)
+        self.assertTrue(is_vj_close)
+        
+        is_vk_close = numpy.allclose(vk_sol, vk_ref, atol=tol)
+        self.assertTrue(is_vk_close)
+
     def test_kuhf_vjk_kpts(self):
         cell = self.cell
         kpts = self.kpts
@@ -79,6 +100,27 @@ class VjkKptsTest(unittest.TestCase):
         is_vj_close = numpy.allclose(vj_sol, vj_ref, atol=tol)
         self.assertTrue(is_vj_close)
 
+        is_vk_close = numpy.allclose(vk_sol, vk_ref, atol=tol)
+        self.assertTrue(is_vk_close)
+
+    def test_kuhf_vjk_kpts_ewald(self):
+        cell = self.cell
+        kpts = self.kpts
+        kmesh = self.kmesh
+        tol = self.tol
+        
+        kuhf = pyscf.pbc.scf.KUHF(cell, kpts=kpts)
+        dm0 = kuhf.get_init_guess(key="minao")
+        
+        vj_ref, vk_ref = self.fftdf.get_jk(dm0, hermi=1, kpts=kpts, exxdiv="ewald")
+        vj_sol, vk_sol = self.isdf.get_jk(dm0, hermi=1, kpts=kpts, exxdiv="ewald")
+        
+        err_k = abs(vk_sol - vk_ref).max()
+        err_j = abs(vj_sol - vj_ref).max()
+        
+        is_vj_close = numpy.allclose(vj_sol, vj_ref, atol=tol)
+        self.assertTrue(is_vj_close)
+        
         is_vk_close = numpy.allclose(vk_sol, vk_ref, atol=tol)
         self.assertTrue(is_vk_close)
 

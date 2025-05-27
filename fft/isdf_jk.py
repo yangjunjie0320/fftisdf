@@ -39,7 +39,7 @@ def get_k_kpts(df_obj, dm_kpts, hermi=1, kpts=numpy.zeros((1, 3)), kpts_band=Non
                exxdiv=None):
     cell = df_obj.cell
     assert cell.low_dim_ft_type != 'inf_vacuum'
-    assert cell.dimension > 1
+    assert cell.dimension == 3
     assert hermi == 1
 
     cell = df_obj.cell
@@ -60,7 +60,6 @@ def get_k_kpts(df_obj, dm_kpts, hermi=1, kpts=numpy.zeros((1, 3)), kpts_band=Non
     kpts_band, input_band = _format_kpts_band(kpts_band, kpts), kpts_band
     nband = len(kpts_band)
     assert nband == nkpt, "not supporting kpts_band"
-    assert exxdiv is None, f"exxdiv = {exxdiv}"
 
     inpv_kpt = df_obj.inpv_kpt
     coul_kpt = df_obj.coul_kpt
@@ -74,7 +73,7 @@ def get_k_kpts(df_obj, dm_kpts, hermi=1, kpts=numpy.zeros((1, 3)), kpts_band=Non
     assert coul_kpt.shape == (nkpt, nip, nip)
     assert coul_spc.shape == (nspc, nip, nip)
 
-    vks = []
+    vk_kpts = []
     for dm_kpt in dms:
         rho_kpt = inpv_kpt @ dm_kpt @ inpv_kpt.conj().transpose(0, 2, 1)
         rho_kpt = numpy.asarray(rho_kpt) / nkpt
@@ -92,9 +91,15 @@ def get_k_kpts(df_obj, dm_kpts, hermi=1, kpts=numpy.zeros((1, 3)), kpts_band=Non
         # vk_kpt = numpy.einsum("kIJ,kIm,kJn->kmn", v_kpt, inpv_kpt.conj(), inpv_kpt, optimize=True)
         vk_kpt = inpv_kpt.transpose(0, 2, 1) @ v_kpt @ inpv_kpt.conj()
         vk_kpt = vk_kpt.conj().reshape(nkpt, nao, nao)
-        vks.append(vk_kpt)
+        vk_kpts.append(vk_kpt)
 
-    vks = numpy.asarray(vks).reshape(nset, nkpt, nao, nao)
+    vk_kpts = numpy.asarray(vk_kpts).reshape(nset, nkpt, nao, nao)
     if is_zero(kpts_band):
-        vks = vks.real
-    return _format_jks(vks, dm_kpts, input_band, kpts)
+        vk_kpts = vk_kpts.real
+
+    if exxdiv is not None:
+        from pyscf.pbc.df.df_jk import _ewald_exxdiv_for_G0
+        assert exxdiv.lower() == "ewald"
+        _ewald_exxdiv_for_G0(cell, kpts, dms, vk_kpts, kpts_band=kpts_band)
+
+    return _format_jks(vk_kpts, dm_kpts, input_band, kpts)

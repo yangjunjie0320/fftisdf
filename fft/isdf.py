@@ -245,7 +245,7 @@ class InterpolativeSeparableDensityFitting(FFTDF):
             t0 = (process_clock(), perf_counter())
             
             fq = numpy.exp(-1j * coords @ kpts[q])
-            vq = pbctools.get_coulG(cell, k=kpts[q], Gv=v0, mesh=mesh)
+            vq = pbctools.get_coulG(cell, k=kpts[q], exx=False, Gv=v0, mesh=mesh)
             vq *= cell.vol / ngrid
             lq = eta_kpt[q].T * fq
             wq = pbctools.fft(lq, mesh)
@@ -378,13 +378,14 @@ class InterpolativeSeparableDensityFitting(FFTDF):
     
     def get_jk(self, dm, hermi=1, kpts=None, kpts_band=None,
                with_j=True, with_k=True, omega=None, exxdiv=None):
-        
-        assert omega is None and exxdiv is None
+
+        assert omega is None
         kpts, is_single_kpt = _check_kpts(self, kpts)
 
         vj = vk = None
         if with_k:
             vk = get_k_kpts(self, dm, hermi, kpts, kpts_band, exxdiv)
+
         if with_j:
             from pyscf.pbc.df.fft_jk import get_j_kpts
             vj = get_j_kpts(self, dm, hermi, kpts, kpts_band)
@@ -394,7 +395,7 @@ class InterpolativeSeparableDensityFitting(FFTDF):
 ISDF = FFTISDF = InterpolativeSeparableDensityFitting
 
 if __name__ == "__main__":
-    a = 1.7834
+    a = 1.7834 # unit Angstrom
     lv = a * (numpy.ones((3, 3)) - numpy.eye(3))
 
     atom  = [['C', (0.0000,     0.0000,   0.0000)]]
@@ -407,16 +408,16 @@ if __name__ == "__main__":
     cell.ke_cutoff = 40.0
     cell.basis = 'gth-dzvp'
     cell.pseudo = 'gth-pade'
+    cell.unit = "A"
     cell.verbose = 0
     cell.build(dump_input=False)
 
     nao = cell.nao_nr()
-    kmesh = [4, 4, 4]
+    kmesh = [2, 2, 2] # 4, 4, 4]
     nkpt = nspc = numpy.prod(kmesh)
     kpts = cell.get_kpts(kmesh)
 
     scf_obj = pyscf.pbc.scf.KRHF(cell, kpts=kpts)
-    scf_obj.exxdiv = None
     scf_obj.conv_tol = 1e-8
     dm_kpts = scf_obj.get_init_guess(key="minao")
 
@@ -424,7 +425,7 @@ if __name__ == "__main__":
 
     vv = []
     ee = []
-    cc = [10.0, 20.0, 30.0, 40.0, None]
+    cc = [10.0, 20.0]
     for c0 in cc:
         from fft import FFTISDF
         scf_obj.with_df = FFTISDF(cell, kpts=kpts)
@@ -436,14 +437,14 @@ if __name__ == "__main__":
         df_obj.verbose = 10
         df_obj.build()
 
-        vj, vk = df_obj.get_jk(dm_kpts)
+        vj, vk = df_obj.get_jk(dm_kpts, with_j=True, with_k=True, exxdiv="ewald")
         vv.append((vj, vk))
         ee.append(scf_obj.energy_tot(dm_kpts))
 
     from pyscf.pbc.df.fft import FFTDF
     scf_obj.with_df = FFTDF(cell, kpts)
     scf_obj.with_df.verbose = 0
-    vj_ref, vk_ref = scf_obj.with_df.get_jk(dm_kpts)
+    vj_ref, vk_ref = scf_obj.with_df.get_jk(dm_kpts, with_j=True, with_k=True, exxdiv="ewald")
     e_ref = scf_obj.energy_tot(dm_kpts)
 
     print("-> FFTDF e_tot = %12.8f" % e_ref)
