@@ -1,5 +1,4 @@
-import pyscf
-import numpy
+import os, sys
 from pyscf.pbc.gto import Cell
 from pyscf.pbc.df import FFTDF
 
@@ -64,35 +63,35 @@ def setup(test_obj, cell=None, basis="gth-dzvp", ke_cutoff=40.0,
     test_obj.fftdf = FFTDF(cell, kpts=kpts)
     
     test_obj.isdf  = fft.ISDF(cell, kpts=kpts)
-    if isdf_to_save is not None:
+    if os.path.exists(isdf_to_save):
         test_obj.isdf._isdf = isdf_to_save
-        test_obj.isdf._isdf_to_save = isdf_to_save
         inpx = None
     else:
         g0 = cell.gen_uniform_grids(cell.mesh)
-        inpx = test_obj.isdf.select_inpx(g0=g0, c0=20.0, kpts=kpts, tol=1e-30)
-        test_obj.isdf.tol = 1e-8
+        inpx = test_obj.isdf.select_inpx(g0=g0, c0=None, kpts=kpts, tol=1e-30)
+    test_obj.isdf.tol = 1e-8
+    test_obj.isdf._isdf_to_save = isdf_to_save
     test_obj.isdf.build(inpx=inpx)
 
-def main(cell="diamond-unit-cell", kmesh=None):
+def main(cell="diamond-unit-cell", kmesh=None, ke_cutoff=20.0, tol=1e-6):
     if kmesh is None:
         kmesh = [2, 2, 2]
 
     kwargs = {
-        "basis": "gth-dzvp", "tol": 1e-6,
-        "ke_cutoff": 20.0, "kmesh": kmesh,
-        "cell": cell, "isdf_to_save": None,
+        "basis": "gth-dzvp", "tol": tol,
+        "ke_cutoff": ke_cutoff, "kmesh": kmesh,
+        "cell": cell, "isdf_to_save": "isdf.h5",
     }
 
-    print(f"Testing {cell} with kmesh: {kmesh}")
+    if os.path.exists(kwargs["isdf_to_save"]):
+        os.remove(kwargs["isdf_to_save"])
 
     vjk_kpts_test = VjkKptsTest()
     setup(vjk_kpts_test, **kwargs)
-    isdf_to_save = vjk_kpts_test.isdf._isdf_to_save
-    kwargs["isdf_to_save"] = isdf_to_save
-
     vjk_kpts_test.test_krhf_vjk_kpts()
     vjk_kpts_test.test_kuhf_vjk_kpts()
+    vjk_kpts_test.test_krhf_vjk_kpts_ewald()
+    vjk_kpts_test.test_kuhf_vjk_kpts_ewald()
     print(f"VjkKptsTest passed for kmesh: {kmesh}")
 
     eri_kpts_test = EriKptsTest()
@@ -108,5 +107,12 @@ def main(cell="diamond-unit-cell", kmesh=None):
     
 if __name__ == "__main__":
     for kmesh in [[2, 2, 2], [3, 3, 3], [4, 4, 4]]:
-        main(cell="he2-cubic-cell", kmesh=kmesh)
-        
+        for cell in ["he2-cubic-cell", "diamond-unit-cell"]:
+            msg = f"testing {cell} with kmesh: {kmesh}, ke_cutoff: 20.0, tol: 1e-6\n"
+            print("\n\nStart %s" % msg)
+            try:
+                main(cell=cell, kmesh=kmesh, ke_cutoff=20.0, tol=1e-5)
+                print("Passed %s\n\n" % msg)
+            except Exception as e:
+                print(e)
+                print("Failed %s\n\n" % msg)

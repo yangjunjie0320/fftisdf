@@ -66,8 +66,9 @@ class EriKptsTest(unittest.TestCase):
             eri_ao_sol = eri_ao_7d[ki, kj, kk]
             eri_ao_sol = eri_ao_sol.reshape(*eri_ao_ref.shape)
 
-            is_close = numpy.allclose(eri_ao_sol, eri_ao_ref, atol=tol)
-            self.assertTrue(is_close)
+            err = abs(eri_ao_sol - eri_ao_ref).max()
+            msg = f"Error in eri_ao_7d for kpts {kpts[ki]}, {kpts[kj]}, {kpts[kk]}, {kpts[km]} is {err}."
+            self.assertLess(err, tol, msg)
 
     def test_fftisdf_get_ao_eri(self):
         cell = self.cell
@@ -85,8 +86,9 @@ class EriKptsTest(unittest.TestCase):
             eri_ao_ref = self.fftdf.get_ao_eri([kpts[ki], kpts[kj], kpts[kk], kpts[km]], compact=False)
             eri_ao_sol = self.isdf.get_ao_eri([kpts[ki], kpts[kj], kpts[kk], kpts[km]],  compact=False)
 
-            is_close = numpy.allclose(eri_ao_sol, eri_ao_ref, atol=tol)
-            self.assertTrue(is_close)
+            err = abs(eri_ao_sol - eri_ao_ref).max()
+            msg = f"Error in eri_ao_7d for kpts {kpts[ki]}, {kpts[kj]}, {kpts[kk]}, {kpts[km]} is {err}."
+            self.assertLess(err, tol, msg)
 
     def test_fftisdf_eri_ao_7d(self):
         cell = self.cell
@@ -104,8 +106,9 @@ class EriKptsTest(unittest.TestCase):
         eri_7d_sol = self.isdf.ao2mo_7d(coeff_kpts, kpts=kpts)
         eri_7d_sol = eri_7d_sol.reshape(*eri_7d_ref.shape)
 
-        is_close = numpy.allclose(eri_7d_sol, eri_7d_ref, atol=tol)
-        self.assertTrue(is_close)
+        err = abs(eri_7d_sol - eri_7d_ref).max()
+        msg = f"Error in eri_ao_7d is {err}."
+        self.assertLess(err, tol, msg)
 
     def test_fftisdf_ao2mo_7d(self):
         cell = self.cell
@@ -122,8 +125,9 @@ class EriKptsTest(unittest.TestCase):
         eri_7d_sol = self.isdf.ao2mo_7d(coeff_kpts, kpts=kpts)
         eri_7d_sol = eri_7d_sol.reshape(*eri_7d_ref.shape)
 
-        is_close = numpy.allclose(eri_7d_sol, eri_7d_ref, atol=tol)
-        self.assertTrue(is_close)
+        err = abs(eri_7d_sol - eri_7d_ref).max()
+        msg = f"Error in eri_ao_7d is {err}."
+        self.assertLess(err, tol, msg)
 
 if __name__ == "__main__":
     unittest.main()

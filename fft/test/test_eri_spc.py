@@ -71,8 +71,9 @@ class EriSpcTest(unittest.TestCase):
         eri_spc_sol = eri_spc_sol.reshape(nmo2, nmo2).real
         eri_spc_sol /= abs(eri_spc_sol).max()
 
-        is_close = numpy.allclose(eri_spc_sol, eri_spc_ref, atol=tol)
-        self.assertTrue(is_close)
+        err = abs(eri_spc_sol - eri_spc_ref).max()
+        msg = f"Error in eri_spc_slow_mo1 is {err}."
+        self.assertLess(err, tol, msg)
 
     def test_fftisdf_eri_spc_slow_mo4(self):
         cell = self.cell
@@ -101,8 +102,9 @@ class EriSpcTest(unittest.TestCase):
         eri_spc_sol = eri_spc_sol.reshape(nmos[0] * nmos[1], nmos[2] * nmos[3])
         eri_spc_sol /= abs(eri_spc_sol).max()
 
-        is_close = numpy.allclose(eri_spc_sol, eri_spc_ref, atol=tol)
-        self.assertTrue(is_close)
+        err = abs(eri_spc_sol - eri_spc_ref).max()
+        msg = f"Error in eri_spc_mo1 is {err}."
+        self.assertLess(err, tol, msg)
 
     def test_fftisdf_eri_spc_mo1(self):
         cell = self.cell
@@ -133,8 +135,9 @@ class EriSpcTest(unittest.TestCase):
         eri_spc_sol = eri_spc_sol.reshape(nmo2, nmo2).real
         eri_spc_sol /= abs(eri_spc_sol).max()
 
-        is_close = numpy.allclose(eri_spc_sol, eri_spc_ref, atol=tol)
-        self.assertTrue(is_close)
+        err = abs(eri_spc_sol - eri_spc_ref).max()
+        msg = f"Error in eri_spc_mo1 is {err}."
+        self.assertLess(err, tol, msg)
 
     def test_fftisdf_eri_spc_mo4(self):
         cell = self.cell
@@ -163,8 +166,9 @@ class EriSpcTest(unittest.TestCase):
         eri_spc_sol = eri_spc_sol.reshape(nmos[0] * nmos[1], nmos[2] * nmos[3])
         eri_spc_sol /= abs(eri_spc_sol).max()
 
-        is_close = numpy.allclose(eri_spc_sol, eri_spc_ref, atol=tol)
-        self.assertTrue(is_close)
+        err = abs(eri_spc_sol - eri_spc_ref).max()
+        msg = f"Error in eri_spc_mo4 is {err}."
+        self.assertLess(err, tol, msg)
 
 if __name__ == "__main__":
     unittest.main()

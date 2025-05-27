@@ -55,11 +55,11 @@ class VjkKptsTest(unittest.TestCase):
         err_k = abs(vk_sol - vk_ref).max()
         err_j = abs(vj_sol - vj_ref).max()
 
-        is_vj_close = numpy.allclose(vj_sol, vj_ref, atol=tol)
-        self.assertTrue(is_vj_close)
+        msg = f"Error in vj is {err_j}."
+        self.assertLess(err_j, tol, msg)
 
-        is_vk_close = numpy.allclose(vk_sol, vk_ref, atol=tol)
-        self.assertTrue(is_vk_close)
+        msg = f"Error in vk is {err_k}."
+        self.assertLess(err_k, tol, msg)
 
     def test_krhf_vjk_kpts_ewald(self):
         cell = self.cell
@@ -76,11 +76,11 @@ class VjkKptsTest(unittest.TestCase):
         err_k = abs(vk_sol - vk_ref).max()
         err_j = abs(vj_sol - vj_ref).max()
         
-        is_vj_close = numpy.allclose(vj_sol, vj_ref, atol=tol)
-        self.assertTrue(is_vj_close)
+        msg = f"Error in vj is {err_j}."
+        self.assertLess(err_j, tol, msg)
         
-        is_vk_close = numpy.allclose(vk_sol, vk_ref, atol=tol)
-        self.assertTrue(is_vk_close)
+        msg = f"Error in vk is {err_k}."
+        self.assertLess(err_k, tol, msg)
 
     def test_kuhf_vjk_kpts(self):
         cell = self.cell
@@ -97,11 +97,11 @@ class VjkKptsTest(unittest.TestCase):
         err_k = abs(vk_sol - vk_ref).max()
         err_j = abs(vj_sol - vj_ref).max()
 
-        is_vj_close = numpy.allclose(vj_sol, vj_ref, atol=tol)
-        self.assertTrue(is_vj_close)
+        msg = f"Error in vj is {err_j}."
+        self.assertLess(err_j, tol, msg)
 
-        is_vk_close = numpy.allclose(vk_sol, vk_ref, atol=tol)
-        self.assertTrue(is_vk_close)
+        msg = f"Error in vk is {err_k}."
+        self.assertLess(err_k, tol, msg)
 
     def test_kuhf_vjk_kpts_ewald(self):
         cell = self.cell
@@ -118,11 +118,11 @@ class VjkKptsTest(unittest.TestCase):
         err_k = abs(vk_sol - vk_ref).max()
         err_j = abs(vj_sol - vj_ref).max()
         
-        is_vj_close = numpy.allclose(vj_sol, vj_ref, atol=tol)
-        self.assertTrue(is_vj_close)
+        msg = f"Error in vj is {err_j}."
+        self.assertLess(err_j, tol, msg)
         
-        is_vk_close = numpy.allclose(vk_sol, vk_ref, atol=tol)
-        self.assertTrue(is_vk_close)
+        msg = f"Error in vk is {err_k}."
+        self.assertLess(err_k, tol, msg)
 
 if __name__ == "__main__":
     unittest.main()
