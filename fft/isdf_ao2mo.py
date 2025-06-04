@@ -33,7 +33,7 @@ def get_ao_eri(df_obj, kpts=None, compact=False):
     coul_kpt = df_obj.coul_kpt
     coul_q = coul_kpt[kq]
 
-    inpv_kpt = df_obj.inpv_kpt
+    inpv_kpt = df_obj._inpv_kpt
     nip, nao = inpv_kpt.shape[1:]
     nao2 = nao * nao # (nao + 1) * nao // 2 if compact
 
@@ -44,7 +44,45 @@ def get_ao_eri(df_obj, kpts=None, compact=False):
     rho_ls = rho_ls.reshape(nip, nao2)
 
     eri_ao = reduce(lib.dot, (rho_mn.T, coul_q, rho_ls))
+    eri_ao = eri_ao.reshape(nao, nao, nao, nao)
     return eri_ao
+
+def get_mo_eri(df_obj, mo_coeff_kpts, kpts=None, compact=False):
+    # TODO: compact is not supported yet
+    assert compact is False, "compact is not supported"
+
+    cell = df_obj.cell
+    kconserv2 = get_kconserv_ria(cell, df_obj.kpts)
+    kconserv3 = get_kconserv(cell, df_obj.kpts)
+
+    km, kn, kl, ks = [member(kpt, df_obj.kpts) for kpt in kpts]
+    is_conserved = (kconserv3[km, kn, kl] == ks)
+    if not is_conserved:
+        raise ValueError("kpts are not conserved")
+
+    kq = kconserv2[km, kn]
+    coul_kpt = df_obj.coul_kpt
+    coul_q = coul_kpt[kq]
+    
+    nkpt, nip, nao = df_obj._inpv_kpt.shape
+
+    inpv_m = df_obj._inpv_kpt[km] @ mo_coeff_kpts[0]
+    inpv_n = df_obj._inpv_kpt[kn] @ mo_coeff_kpts[1]
+    nmo1 = inpv_m.shape[1]
+    nmo2 = inpv_n.shape[1]
+    rho_mn = inpv_m.conj().reshape(-1, nmo1, 1) * inpv_n.reshape(-1, 1, nmo2)
+    rho_mn = rho_mn.reshape(nip, nmo1 * nmo2)
+
+    inpv_l = df_obj._inpv_kpt[kl] @ mo_coeff_kpts[2]
+    inpv_s = df_obj._inpv_kpt[ks] @ mo_coeff_kpts[3]
+    nmo3 = inpv_l.shape[1]
+    nmo4 = inpv_s.shape[1]
+    rho_ls = inpv_l.conj().reshape(-1, nmo3, 1) * inpv_s.reshape(-1, 1, nmo4)
+    rho_ls = rho_ls.reshape(nip, nmo3 * nmo4)
+
+    eri_mo = reduce(lib.dot, (rho_mn.T, coul_q, rho_ls))
+    eri_mo = eri_mo.reshape(nmo1, nmo2, nmo3, nmo4)
+    return eri_mo
 
 def ao2mo_7d(df_obj, mo_coeff_kpts, kpts=None):
     # TODO: support different mo_coeff_kpts for each AO index
@@ -75,7 +113,6 @@ def ao2mo_7d(df_obj, mo_coeff_kpts, kpts=None):
     kconserv2 = get_kconserv_ria(cell, kpts)
     kconserv3 = get_kconserv(cell, kpts)
 
-    # inpv_kpt = numpy.einsum("kIm,kmp->kIp", df_obj._inpv_kpt, mo_coeff_kpts)
     inpv_kpt = df_obj.inpv_kpt @ mo_coeff_kpts
     inpv_kpt = inpv_kpt.reshape(nkpt, nip, nmo)
 
@@ -185,6 +222,9 @@ def ao2mo_spc_slow(df_obj, mo_coeff_kpts, kpts=None):
 
 fft.isdf.FFTISDF.get_eri = get_ao_eri
 fft.isdf.FFTISDF.get_ao_eri = get_ao_eri
+fft.isdf.FFTISDF.get_mo_eri = get_mo_eri
+fft.isdf.FFTISDF.ao2mo = get_mo_eri
+
 fft.isdf.FFTISDF.ao2mo_spc = ao2mo_spc
 fft.isdf.FFTISDF.ao2mo_kpt = ao2mo_7d
 fft.isdf.FFTISDF.ao2mo_7d = ao2mo_7d
