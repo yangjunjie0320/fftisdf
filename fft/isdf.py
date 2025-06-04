@@ -112,11 +112,7 @@ class InterpolativeSeparableDensityFitting(FFTDF):
     wrap_around = False
     tol = 1e-8
     c0 = 20.0
-<<<<<<< Updated upstream
-    _keys = {"tol", "c0", "wrap_around", "kconserv"}
-=======
     _keys = {"tol", "c0", "wrap_around", "kconserv2", "kconserv3"}
->>>>>>> Stashed changes
 
     def __init__(self, cell, kpts=numpy.zeros((1, 3))):
         FFTDF.__init__(self, cell, kpts)
