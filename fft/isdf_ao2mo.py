@@ -4,8 +4,6 @@ from functools import reduce
 from pyscf import lib
 from itertools import product
 from pyscf.pbc.lib import kpts_helper
-from pyscf.pbc.lib.kpts_helper import get_kconserv
-from pyscf.pbc.lib.kpts_helper import get_kconserv_ria
 
 import fft
 from fft.isdf_jk import kpt_to_spc, spc_to_kpt
@@ -21,11 +19,11 @@ def get_ao_eri(df_obj, kpts=None, compact=False):
     assert compact is False, "compact is not supported"
 
     cell = df_obj.cell
-    kconserv2 = get_kconserv_ria(cell, df_obj.kpts)
-    kconserv3 = get_kconserv(cell, df_obj.kpts)
+    kconserv2 = df_obj.kconserv2
+    kconserv3 = df_obj.kconserv3
 
     km, kn, kl, ks = [member(kpt, df_obj.kpts) for kpt in kpts]
-    is_conserved = (kconserv3[km, kn, kl] == ks)
+    is_conserved = (kconserv3[km, kn, kl] == ks) # TODO: use kconserv2
     if not is_conserved:
         raise ValueError("kpts are not conserved")
     
@@ -52,8 +50,8 @@ def get_mo_eri(df_obj, mo_coeff_kpts, kpts=None, compact=False):
     assert compact is False, "compact is not supported"
 
     cell = df_obj.cell
-    kconserv2 = get_kconserv_ria(cell, df_obj.kpts)
-    kconserv3 = get_kconserv(cell, df_obj.kpts)
+    kconserv2 = df_obj.kconserv2
+    kconserv3 = df_obj.kconserv3
 
     km, kn, kl, ks = [member(kpt, df_obj.kpts) for kpt in kpts]
     is_conserved = (kconserv3[km, kn, kl] == ks)
@@ -110,8 +108,8 @@ def ao2mo_7d(df_obj, mo_coeff_kpts, kpts=None):
     eri_7d = numpy.zeros(shape, dtype=numpy.complex128)
 
     cell = df_obj.cell
-    kconserv2 = get_kconserv_ria(cell, kpts)
-    kconserv3 = get_kconserv(cell, kpts)
+    kconserv2 = df_obj.kconserv2
+    kconserv3 = df_obj.kconserv3
 
     inpv_kpt = df_obj.inpv_kpt @ mo_coeff_kpts
     inpv_kpt = inpv_kpt.reshape(nkpt, nip, nmo)

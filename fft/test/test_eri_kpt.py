@@ -54,11 +54,11 @@ class EriKptsTest(unittest.TestCase):
         nao = cell.nao_nr()
         coeff_kpts = [numpy.eye(nao) for _ in range(nkpts)]
         coeff_kpts = numpy.array(coeff_kpts)
+        coeff_kpts /= abs(coeff_kpts).max()
         eri_ao_7d = self.fftdf.ao2mo_7d(coeff_kpts, kpts=kpts)
 
-        from pyscf.pbc.lib.kpts_helper import get_kconserv, loop_kkk
-        kconserv3 = get_kconserv(cell, kpts)
-
+        from pyscf.pbc.lib.kpts_helper import loop_kkk
+        kconserv3 = self.isdf.kconserv3
         for ki, kj, kk in loop_kkk(nkpts):
             km = kconserv3[ki, kj, kk]
 
@@ -79,12 +79,13 @@ class EriKptsTest(unittest.TestCase):
         nkpts = len(kpts)
         nao = cell.nao_nr()
 
-        from pyscf.pbc.lib.kpts_helper import get_kconserv, loop_kkk
-        kconserv3 = get_kconserv(cell, kpts)
+        from pyscf.pbc.lib.kpts_helper import loop_kkk
+        kconserv3 = self.isdf.kconserv3
         for ki, kj, kk in loop_kkk(nkpts):
             km = kconserv3[ki, kj, kk]
             eri_ao_ref = self.fftdf.get_ao_eri([kpts[ki], kpts[kj], kpts[kk], kpts[km]], compact=False)
             eri_ao_sol = self.isdf.get_ao_eri([kpts[ki], kpts[kj], kpts[kk], kpts[km]],  compact=False)
+            eri_ao_sol = eri_ao_sol.reshape(*eri_ao_ref.shape)
 
             err = abs(eri_ao_sol - eri_ao_ref).max()
             msg = f"Error in eri_ao_7d for kpts {kpts[ki]}, {kpts[kj]}, {kpts[kk]}, {kpts[km]} is {err}."
@@ -101,6 +102,7 @@ class EriKptsTest(unittest.TestCase):
 
         coeff_kpts = [numpy.eye(nao) for _ in range(nkpts)]
         coeff_kpts = numpy.array(coeff_kpts)
+        coeff_kpts /= abs(coeff_kpts).max()
 
         eri_7d_ref = self.fftdf.ao2mo_7d(coeff_kpts, kpts=kpts)
         eri_7d_sol = self.isdf.ao2mo_7d(coeff_kpts, kpts=kpts)
@@ -121,6 +123,8 @@ class EriKptsTest(unittest.TestCase):
 
         coeff_kpts = (numpy.random.random((nkpts, nao, nao)) +
                       numpy.random.random((nkpts, nao, nao)) * 1j)
+        coeff_kpts /= abs(coeff_kpts).max()
+
         eri_7d_ref = self.fftdf.ao2mo_7d(coeff_kpts, kpts=kpts)
         eri_7d_sol = self.isdf.ao2mo_7d(coeff_kpts, kpts=kpts)
         eri_7d_sol = eri_7d_sol.reshape(*eri_7d_ref.shape)

@@ -14,7 +14,7 @@ PYSCF_MAX_MEMORY = int(os.environ.get("PYSCF_MAX_MEMORY", 2000))
 def kpts_to_kmesh(cell, kpts, wrap_around=False):
     if not isinstance(kpts, numpy.ndarray):
         kpts = numpy.asarray(kpts.kpts)
-    kmesh = pbctools.k2gamma.kpts_to_kmesh(cell, kpts)
+    kmesh = pbctools.k2gamma.kpts_to_kmesh(cell, kpts - kpts[0])
     assert numpy.allclose(kpts, cell.get_kpts(kmesh, wrap_around=wrap_around))
     return kpts, kmesh
 

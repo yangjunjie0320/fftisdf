@@ -14,6 +14,7 @@ from pyscf.lib import logger, current_memory
 from pyscf.lib.chkfile import load, dump
 from pyscf.lib.logger import process_clock, perf_counter
 from pyscf.lib.scipy_helper import pivoted_cholesky
+from pyscf.pbc.lib.kpts_helper import get_kconserv
 
 # pyscf.pbc
 from pyscf.pbc import tools as pbctools
@@ -111,10 +112,13 @@ class InterpolativeSeparableDensityFitting(FFTDF):
     wrap_around = False
     tol = 1e-8
     c0 = 20.0
-    _keys = {"tol", "c0", "wrap_around"}
+    _keys = {"tol", "c0", "wrap_around", "kconserv"}
 
     def __init__(self, cell, kpts=numpy.zeros((1, 3))):
         FFTDF.__init__(self, cell, kpts)
+        kconserv = get_kconserv(cell, kpts)
+        self.kconserv3 = kconserv
+        self.kconserv2 = kconserv[:, :, 0].T
 
         self._fswap = lib.H5TmpFile()
 
