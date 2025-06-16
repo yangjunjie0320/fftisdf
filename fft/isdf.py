@@ -396,35 +396,30 @@ class InterpolativeSeparableDensityFitting(FFTDF):
     def aoR_loop(self, grids=None, kpts=None, deriv=0, blksize=None):
         if grids is None:
             grids = self.grids
-            cell = self.cell
-        else:
-            cell = grids.cell
+        assert grids.non0tab is None
 
-        if grids.non0tab is None:
-            grids.build(with_non0tab=True)
-
+        cell = grids.cell
+        assert cell.dimension == 3
+        
         if kpts is None:
             kpts = self.kpts
         kpts = numpy.asarray(kpts)
 
-        assert cell.dimension == 3
-
-        max_memory = max(2000, self.max_memory - current_memory()[0])
-
         ni = self._numint
         nao = cell.nao_nr()
-        p1 = 0
-
+        max_memory = self.max_memory - current_memory()[0]
         block_loop = ni.block_loop(
-            cell, grids, nao, deriv, kpts,
+            cell, grids, nao, deriv, 
+            kpts, blksize=blksize, 
             max_memory=max_memory,
-            blksize=blksize
             )
         
+        g0 = g1 = 0
         for ao_etc_kpt in block_loop:
             coords = ao_etc_kpt[4]
-            p0, p1 = p1, p1 + coords.shape[0]
-            yield ao_etc_kpt, p0, p1
+            g0 = g1
+            g1 += coords.shape[0]
+            yield ao_etc_kpt, g0, g1
     
     def get_jk(self, dm, hermi=1, kpts=None, kpts_band=None,
                with_j=True, with_k=True, omega=None, exxdiv=None):
