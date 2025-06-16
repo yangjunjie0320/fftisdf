@@ -25,94 +25,141 @@ from fft.isdf_jk import get_k_kpts
 from fft.isdf_jk import get_phase, kpts_to_kmesh
 from fft.isdf_jk import spc_to_kpt, kpt_to_spc
 
-PARENT_GRID_SIZE_MAX = getattr(__config__, "isdf_parent_grid_size_max", 40000)
-CONTRACT_BLKSIZE_MAX = getattr(__config__, "isdf_contract_blksize_max", 40000)
+CHOLESKY_TOL = getattr(__config__, "fftisdf_cholesky_tol", 1e-30)
+CHOLESKY_MAX_SIZE = getattr(__config__, "fftisdf_cholesky_max_size", 40000)
+CONTRACT_MAX_SIZE = getattr(__config__, "fftisdf_contract_max_size", 40000)
 
 # Naming convention:
 # *_kpt: k-space array, which shapes as (nkpt, x, x)
 # *_spc: super-cell stripe array, which shapes as (nspc, x, x)
-# *_full: full array, shapes as (nspc * x, nspc * x)
-# *_k1, *_k2: the k-space array at specified k-point
 
 def contract(f_kpt, g_kpt, phase):
-    """Contract two k-space arrays."""
-    nk, m, n = f_kpt.shape
-    l = g_kpt.shape[1]
-    assert f_kpt.shape == (nk, m, n)
-    assert g_kpt.shape == (nk, l, n)
-
-    # kmn,kln -> kml
-    t_kpt = f_kpt.conj() @ g_kpt.transpose(0, 2, 1)
-    t_kpt = t_kpt.reshape(nk, m, l)
+    """
+    Contract two k-space arrays with the following steps:
+    [1] Matrix multiplication:       T_{ml}^k = \sum_n F_{mn}^k* G_{ln}^k
+    [2] kspace->supercell transform. T_{ml}^s <- T_{ml}^k
+    [3] Element-wise square:         X_{ml}^s = T_{ml}^s T_{ml}^s
+    [4] supercell->kspace transform. X_{ml}^k <- X_{ml}^s
     
+    Args:
+        f_kpt (ndarray): First k-space array, shape (k, m, n)
+        g_kpt (ndarray): Second k-space array, shape (k, l, n)  
+        phase (ndarray): Phase factors for k-space transforms
+        
+    Returns:
+        ndarray: Contracted result in k-space, shape (k, m, l)
+    """
+    k, m, n = f_kpt.shape
+    l = g_kpt.shape[1]
+    assert f_kpt.shape == (k, m, n)
+    assert g_kpt.shape == (k, l, n)
+
+    # [1] Matrix multiplication
+    a_kpt = f_kpt.conj()
+    b_kpt = g_kpt.transpose(0, 2, 1)
+    t_kpt = numpy.matmul(a_kpt, b_kpt)
+    t_kpt = t_kpt.reshape(k, m, l)
+
+    # [2] kspace->supercell transform
     t_spc = kpt_to_spc(t_kpt, phase)
 
-    # smn,smn -> smn
+    # [3] Element-wise square
     x_spc = t_spc * t_spc
+
+    # [4] supercell->kspace transform
     x_kpt = spc_to_kpt(x_spc, phase)
     return x_kpt
 
 def lstsq(a, b, tol=1e-10):
-    u, s, vh = svd(a, full_matrices=False)
-    uh = u.conj().T
-    v = vh.conj().T
-    s2 = s[None, :] * s[:, None]
-    
-    mask = abs(s2) > tol
-    x = reduce(numpy.dot, (uh, b, u))
-    x[mask] /= s2[mask]
-    x = reduce(numpy.dot, (v, x, vh))
+    """
+    Solve the Hermitian sandwich least-squares problem using SVD.
+        A dot X dot A ~ B, where A is Hermitian
+    Following the given steps:
+        [1] SVD of A: A = U dot S dot Vh
+        [2] Compute R[i, j] = 1 / S[i] * S[j]
+            if S[i] * S[j] > tol, otherwise 0
+        [3] Compute T = (Uh dot B dot U) * R
+        [4] Compute X = V dot T dot Vh
+        [5] X = (X + X.conj().T) / 2 to ensure X is Hermitian
 
+    Args:
+        a (ndarray): Hermitian matrix, shape (m, m)
+        b (ndarray): Right-hand side, shape (m, n)
+        tol (float): Tolerance for SVD
+
+    Returns:
+    """
+    # [1] SVD of A
+    u, s, vh = svd(a, full_matrices=False)
+
+    # [2] Compute R[i, j] = 1 / S[i] * S[j] 
+    # if S[i] * S[j] > tol, otherwise 0
+    r = s[None, :] * s[:, None]
+    m = abs(r) > tol
+    r[m]  = 1.0 / r[m]
+    r[~m] = 0.0
+
+    # [3] Compute T = (Uh dot B dot U) * R
+    bu = lib.dot(b, u)
+    uh = u.conj().T
+    t = lib.dot(uh, bu) * r
+    
+    # [4] Compute X = V dot T dot Vh
+    v = vh.conj().T
+    tv = lib.dot(t, v)
+
+    # [5] X = (X + X.conj().T) / 2 to ensure X is Hermitian
+    x = lib.dot(vh, tv)
     x = (x + x.conj().T) / 2
+
     return x
 
-def select_inpx(df_obj, g0=None, c0=None, kpts=None, tol=1e-10):
+def select_interpolating_points(df_obj, cisdf=None):
     log = logger.new_logger(df_obj, df_obj.verbose)
     
     cell = df_obj.cell
     nao = cell.nao_nr()
     ng = g0.shape[0]
 
-    wrap_around = df_obj.wrap_around
-    kpts, kmesh = kpts_to_kmesh(cell, kpts, wrap_around)
-    phase = get_phase(cell, kpts, kmesh=kmesh, wrap_around=wrap_around)[1]
-    nkpt = len(kpts)
+    # wrap_around = df_obj.wrap_around
+    # kpts, kmesh = kpts_to_kmesh(cell, kpts, wrap_around)
+    # phase = get_phase(cell, kpts, kmesh=kmesh, wrap_around=wrap_around)[1]
+    # nkpt = len(kpts)
 
-    if kpts is None:
-        kpts = numpy.zeros((1, 3))
+    # if kpts is None:
+    #     kpts = numpy.zeros((1, 3))
 
-    x_kpt = cell.pbc_eval_gto("GTOval", g0, kpts=kpts)
-    x_kpt = numpy.asarray(x_kpt, dtype=numpy.complex128)
-    t = x_kpt.transpose(1, 0, 2).reshape(ng, -1)
-    m0 = t.conj() @ t.T / numpy.sqrt(nkpt)
-    m0 = m0.real ** 2
+    # x_kpt = cell.pbc_eval_gto("GTOval", g0, kpts=kpts)
+    # x_kpt = numpy.asarray(x_kpt, dtype=numpy.complex128)
+    # t = x_kpt.transpose(1, 0, 2).reshape(ng, -1)
+    # m0 = t.conj() @ t.T / numpy.sqrt(nkpt)
+    # m0 = m0.real ** 2
 
-    chol, perm, rank = pivoted_cholesky(m0, tol=tol)
-    nip = rank
+    # chol, perm, rank = pivoted_cholesky(m0, tol=tol)
+    # nip = rank
 
-    if c0 is not None:
-        nip = int(c0 * nao)
-        log.info("Cholesky rank = %d, c0 = %6.2f, nao = %d, nip = %d", rank, c0, nao, nip)
-    else:
-        log.info("Cholesky rank = %d, nao = %d, nip = %d", rank, nao, nip)
-        log.info("Using all Cholesky vectors as interpolating points.")
+    # if c0 is not None:
+    #     nip = int(c0 * nao)
+    #     log.info("Cholesky rank = %d, c0 = %6.2f, nao = %d, nip = %d", rank, c0, nao, nip)
+    # else:
+    #     log.info("Cholesky rank = %d, nao = %d, nip = %d", rank, nao, nip)
+    #     log.info("Using all Cholesky vectors as interpolating points.")
 
-    mask = perm[:nip]
-    diag = numpy.diag(chol)
-    s0 = numpy.sum(diag[:nip])
-    s1 = numpy.sum(diag[nip:])
+    # mask = perm[:nip]
+    # diag = numpy.diag(chol)
+    # s0 = numpy.sum(diag[:nip])
+    # s1 = numpy.sum(diag[nip:])
 
-    log.info("Parent grid size = %d, selected grid size = %d", ng, nip)
-    log.info("truncated values = %6.2e, estimated error = %6.2e", s0, s1)
+    # log.info("Parent grid size = %d, selected grid size = %d", ng, nip)
+    # log.info("truncated values = %6.2e, estimated error = %6.2e", s0, s1)
 
-    inpx = g0[mask]
-    return inpx
+    # inpx = g0[mask]
+    # return inpx
     
 class InterpolativeSeparableDensityFitting(FFTDF):
     wrap_around = False
     tol = 1e-8
-    c0 = 20.0
-    _keys = {"tol", "c0", "wrap_around", "kconserv2", "kconserv3"}
+    _keys = {"tol", "wrap_around", "kconserv2", "kconserv3"}
 
     def __init__(self, cell, kpts=numpy.zeros((1, 3))):
         FFTDF.__init__(self, cell, kpts)
@@ -135,7 +182,6 @@ class InterpolativeSeparableDensityFitting(FFTDF):
         log.info("mesh = %s (%d PWs)", self.mesh, numpy.prod(self.mesh))
         log.info("len(kpts) = %d", len(self.kpts))
         log.info("tol = %s", self.tol)
-        log.info("c0 = %s", self.c0)
         log.info("wrap_around = %s", self.wrap_around)
         if self._isdf_to_save is not None:
             log.info("isdf_to_save = %s", self._isdf_to_save)
