@@ -27,7 +27,7 @@ from fft.isdf_jk import get_phase_factor
 from fft.isdf_jk import spc_to_kpt, kpt_to_spc
 
 from pyscf.pbc.dft.gen_grid import BLKSIZE
-CHOLESKY_TOL = getattr(__config__, "fftisdf_cholesky_tol", 1e-30)
+CHOLESKY_TOL = getattr(__config__, "fftisdf_cholesky_tol", 1e-16)
 CHOLESKY_MAX_SIZE = getattr(__config__, "fftisdf_cholesky_max_size", 2000)
 CONTRACT_MAX_SIZE = getattr(__config__, "fftisdf_contract_max_size", 2000)
 
@@ -127,10 +127,12 @@ def compute_blksize(ntot, nmax=2000, chunk=BLKSIZE):
         - blksize is a multiple of blks
         - try to make each slice equal size
     """
-    blknum = (ntot + nmax - 1) // nmax
-    blksize = (ntot + blknum - 1) // blknum
-    blksize = (blksize + chunk - 1) // chunk 
-    return blksize * chunk
+    blksize_max = nmax // chunk * chunk
+    blknum_min = (ntot + blksize_max - 1) // blksize_max
+    blksize = (ntot + blknum_min - 1) // blknum_min
+    blksize = (blksize + chunk - 1) // chunk * chunk
+    blksize = min(blksize, blksize_max)
+    return blksize
 
 def select_interpolating_points(df_obj, cisdf=None):
     log = logger.new_logger(df_obj, df_obj.verbose)
@@ -150,25 +152,45 @@ def select_interpolating_points(df_obj, cisdf=None):
     if ngrid > CHOLESKY_MAX_SIZE:
         blksize = compute_blksize(ngrid, CHOLESKY_MAX_SIZE, BLKSIZE)
         assert blksize % BLKSIZE == 0
-        print("blksize = ", blksize)
-        print("ngrid = ", ngrid)
-        print("CHOLESKY_MAX_SIZE = ", CHOLESKY_MAX_SIZE)
-        print("BLKSIZE = ", BLKSIZE)
-        # assert 1 == 2
+        assert blksize <= CHOLESKY_MAX_SIZE
+
+        print(f"{ngrid = }, {CHOLESKY_MAX_SIZE = }, {BLKSIZE = }")
+        print(f"{blksize = }, {ngrid // blksize = }, {ngrid % blksize = }")
 
         info = (lambda s: f"Cholesky decomposition for grids [%{len(s)}d, %{len(s)}d]")(str(ngrid))
         aoR_loop = df_obj.aoR_loop(grids=grids, kpts=kpts, blksize=blksize)
     
         weight = numpy.zeros(ngrid)        
         for ao_etc_kpt, g0, g1 in aoR_loop:
-            ao_kpt = numpy.asarray(ao_etc_kpt[0], dtype=numpy.complex128)
-            m_kpt = contract(ao_kpt, ao_kpt, phase)
-            m0 = m_kpt[0].real
+            ao_g0g1_kpt = numpy.asarray(ao_etc_kpt[0], dtype=numpy.complex128)
+            metx_g0g1 = numpy.einsum("kgm,khm->gh", ao_g0g1_kpt, ao_g0g1_kpt.conj())
+            metx_g0g1 = (metx_g0g1.real) ** 2 / numpy.sqrt(nkpt)
+            chol, perm, rank = pivoted_cholesky(metx_g0g1, tol=CHOLESKY_TOL)
+            print(chol.shape, perm.shape, rank)
 
-            chol, perm, rank = pivoted_cholesky(m0, tol=CHOLESKY_TOL)
-            weight[g0 + perm] = numpy.diag(chol)
+            pi = numpy.eye(g1 - g0)[:, perm]
+            n1 = numpy.linalg.norm(chol, axis=0)
+            assert n1.shape == (g1 - g0,)
+
+            mm = metx_g0g1[perm[:rank], :][:, perm[:rank]]
+            print(mm.shape)
+            
+            chol, perm, rank = pivoted_cholesky(mm, tol=CHOLESKY_TOL)
+            print(chol.shape, perm.shape, rank)
+            assert 1 == 2
+
+            weight[g0+perm[:rank]] = numpy.diag(chol)
+            print(weight)
+            print(numpy.diag(chol)[perm])
+            print(perm)
+            print(rank)
 
             log.debug(info % (g0, g1) + ", rank = %d" % rank)
+            assert 1 == 2
+
+        print(weight.shape, weight.nbytes / 1e9, "GB")
+        print(weight)
+        assert 1 == 2
 
         ix = numpy.argsort(weight)[-CHOLESKY_MAX_SIZE:]
         ix = ix[weight[ix] > CHOLESKY_TOL]
@@ -195,6 +217,7 @@ def select_interpolating_points(df_obj, cisdf=None):
     # assert 1 == 2
 
     chol, perm, rank = pivoted_cholesky(metx0, tol=CHOLESKY_TOL)
+    print(chol.shape, perm.shape, rank)
     log.info("Parent grid size = %d, Cholesky rank = %d", ngrid, rank)
 
     nip = rank
@@ -506,7 +529,7 @@ if __name__ == "__main__":
     cell = gto.Cell()
     cell.atom = atom
     cell.a = lv
-    cell.ke_cutoff = 40.0
+    cell.ke_cutoff = 80.0
     cell.basis = 'gth-dzvp'
     cell.pseudo = 'gth-pade'
     cell.unit = "A"
