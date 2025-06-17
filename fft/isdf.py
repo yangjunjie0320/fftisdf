@@ -26,6 +26,7 @@ from fft.isdf_jk import kpts_to_kmesh
 from fft.isdf_jk import get_phase_factor
 from fft.isdf_jk import spc_to_kpt, kpt_to_spc
 
+from pyscf.pbc.dft.gen_grid import BLKSIZE
 CHOLESKY_TOL = getattr(__config__, "fftisdf_cholesky_tol", 1e-30)
 CHOLESKY_MAX_SIZE = getattr(__config__, "fftisdf_cholesky_max_size", 2000)
 CONTRACT_MAX_SIZE = getattr(__config__, "fftisdf_contract_max_size", 2000)
@@ -70,50 +71,66 @@ def contract(f_kpt, g_kpt, phase):
     x_kpt = spc_to_kpt(x_spc, phase)
     return x_kpt
 
-def lstsq(a, b, tol=1e-10):
-    r"""
-    Solve the Hermitian sandwich least-squares problem using SVD.
-        A dot X dot A ~ B, where A is Hermitian
+# def lstsq(a, b, tol=1e-10):
+#     r"""
+#     Solve the Hermitian sandwich least-squares problem using SVD.
+#         A dot X dot A ~ B, where A is Hermitian
 
-    Following the given steps:
-        [1] SVD of A: A = U dot S dot Vh
-        [2] Compute R[i, j] = 1 / S[i] * S[j]
-            if S[i] * S[j] > tol, otherwise 0
-        [3] Compute T = (Uh dot B dot U) * R
-        [4] Compute X = V dot T dot Vh
-        [5] X = (X + X.conj().T) / 2 to ensure X is Hermitian
+#     Following the given steps:
+#         [1] SVD of A: A = U dot S dot Vh
+#         [2] Compute R[i, j] = 1 / S[i] * S[j]
+#             if S[i] * S[j] > tol, otherwise 0
+#         [3] Compute T = (Uh dot B dot U) * R
+#         [4] Compute X = V dot T dot Vh
+#         [5] X = (X + X.conj().T) / 2 to ensure X is Hermitian
 
-    Args:
-        a (ndarray): Hermitian matrix, shape (m, m)
-        b (ndarray): Right-hand side, shape (m, n)
-        tol (float): Tolerance for SVD
+#     Args:
+#         a (ndarray): Hermitian matrix, shape (m, m)
+#         b (ndarray): Right-hand side, shape (m, n)
+#         tol (float): Tolerance for SVD
 
-    Returns:
-    """
-    # [1] SVD of A
-    u, s, vh = svd(a, full_matrices=False)
+#     Returns:
+#     """
+#     # [1] SVD of A
+#     u, s, vh = svd(a, full_matrices=False)
 
-    # [2] Compute R[i, j] = 1 / S[i] * S[j] 
-    # if S[i] * S[j] > tol, otherwise 0
-    r = s[None, :] * s[:, None]
-    m = abs(r) > tol
-    r[m]  = 1.0 / r[m]
-    r[~m] = 0.0
+#     # [2] Compute R[i, j] = 1 / S[i] * S[j] 
+#     # if S[i] * S[j] > tol, otherwise 0
+#     r = s[None, :] * s[:, None]
+#     m = abs(r) > tol * tol
 
-    # [3] Compute T = (Uh dot B dot U) * R
-    bu = lib.dot(b, u)
-    uh = u.conj().T
-    t = lib.dot(uh, bu) * r
+#     # [3] Compute T = (Uh dot B dot U) * R
+#     bu = lib.dot(b, u)
+#     uh = u.conj().T
+#     t = lib.dot(uh, bu)
+#     t[m] /= r[m]
     
-    # [4] Compute X = V dot T dot Vh
-    v = vh.conj().T
-    tv = lib.dot(t, v)
+#     # [4] Compute X = V dot T dot Vh
+#     v = vh.conj().T
+#     tv = lib.dot(t, v)
 
-    # [5] X = (X + X.conj().T) / 2 to ensure X is Hermitian
-    x = lib.dot(vh, tv)
-    x = (x + x.conj().T) / 2
+#     # [5] X = (X + X.conj().T) / 2 to ensure X is Hermitian
+#     x = lib.dot(vh, tv)
+#     x = (x + x.conj().T) / 2
 
-    return x
+#     return x
+
+def lstsq(a, b, tol=1e-10):
+    ainv = scipy.linalg.pinvh(a, atol=tol)
+    return ainv @ b @ ainv
+
+def compute_blksize(ntot, nmax=2000, chunk=BLKSIZE):
+    """Participate the grid into slices. Output an integer
+    which corresponds to the hlksize for the loop with the
+    following condition:
+        - each slice is smaller than bmax
+        - blksize is a multiple of blks
+        - try to make each slice equal size
+    """
+    blknum = (ntot + nmax - 1) // nmax
+    blksize = (ntot + blknum - 1) // blknum
+    blksize = (blksize + chunk - 1) // chunk 
+    return blksize * chunk
 
 def select_interpolating_points(df_obj, cisdf=None):
     log = logger.new_logger(df_obj, df_obj.verbose)
@@ -131,10 +148,15 @@ def select_interpolating_points(df_obj, cisdf=None):
 
     ix = numpy.arange(ngrid)
     if ngrid > CHOLESKY_MAX_SIZE:
-        blknum = (ngrid + CHOLESKY_MAX_SIZE - 1) // CHOLESKY_MAX_SIZE
-        blksize = ngrid // blknum + 1
-        
-        info = (lambda s: f"Cholesky decomposition for grids %{len(s)}d: %{len(s)}d")(str(ngrid))
+        blksize = compute_blksize(ngrid, CHOLESKY_MAX_SIZE, BLKSIZE)
+        assert blksize % BLKSIZE == 0
+        print("blksize = ", blksize)
+        print("ngrid = ", ngrid)
+        print("CHOLESKY_MAX_SIZE = ", CHOLESKY_MAX_SIZE)
+        print("BLKSIZE = ", BLKSIZE)
+        # assert 1 == 2
+
+        info = (lambda s: f"Cholesky decomposition for grids [%{len(s)}d, %{len(s)}d]")(str(ngrid))
         aoR_loop = df_obj.aoR_loop(grids=grids, kpts=kpts, blksize=blksize)
     
         weight = numpy.zeros(ngrid)        
@@ -154,22 +176,23 @@ def select_interpolating_points(df_obj, cisdf=None):
 
     print(ix.shape)
     print(ix)
-    
+
     nx = len(ix)
-    print(nx, coord[ix].shape)
     phi_kpt = cell.pbc_eval_gto("GTOval", coord[ix], kpts=kpts)
     phi_kpt = numpy.asarray(phi_kpt, dtype=numpy.complex128)
-    print(phi_kpt.shape)
     metx0 = numpy.zeros((nx, nx), dtype=numpy.float64)
     for k in range(nkpt):
-        phi_k = phi_kpt[k]
-        assert phi_k.shape == (nx, nao)
-
-        m_k = lib.dot(phi_k.conj(), phi_k.T)
-        m_k = m_k.real
-        metx0 += m_k ** 2
+        fk = phi_kpt[k]
+        mk = lib.dot(fk.conj(), fk.T)
+        mk = mk.real
+        metx0 += mk ** 2
     metx0 /= numpy.sqrt(nkpt)
-    print(metx0.min(), metx0.max(), metx0.shape)
+    
+    # metx0_ref = contract(phi_kpt, phi_kpt, phase)[0].real
+    # metx0_sol = metx0.copy()
+    # err = abs(metx0_ref - metx0_sol).max()
+    # assert err < 1e-10
+    # assert 1 == 2
 
     chol, perm, rank = pivoted_cholesky(metx0, tol=CHOLESKY_TOL)
     log.info("Parent grid size = %d, Cholesky rank = %d", ngrid, rank)
@@ -220,20 +243,12 @@ class InterpolativeSeparableDensityFitting(FFTDF):
             log.info("isdf_to_save = %s", self._isdf_to_save)
         return self
 
-    def build_inpv_kpt(self, inpx=None, tol=1e-10):
+    def build_inpv_kpt(self, cisdf=10.0):
         log = logger.new_logger(self, self.verbose)
         
         cell = self.cell
         kpts = self.kpts
-        kpts, kmesh, wrap_around = kpts_to_kmesh(cell, kpts)
-
-        mesh = cell.mesh
-        if inpx is None:
-            inpx = select_interpolating_points(self)
-        else:
-            log.debug("Using pre-computed interpolating vectors, c0 is not used")
-
-        log.info("Number of interpolating points is %d.", inpx.shape[0])
+        inpx = select_interpolating_points(self, cisdf=cisdf)
         inpv_kpt = cell.pbc_eval_gto("GTOval", inpx, kpts=kpts)
         inpv_kpt = numpy.asarray(inpv_kpt, dtype=numpy.complex128)
         return inpv_kpt
@@ -251,7 +266,7 @@ class InterpolativeSeparableDensityFitting(FFTDF):
         nkpt, nip, nao = inpv_kpt.shape
 
         blksize = int(max_memory * 1e6 * 0.1) // (nkpt * nip * 16)
-        blksize = max(blksize, 1)
+        blksize = max(blksize, BLKSIZE)
         blksize = min(CONTRACT_MAX_SIZE, blksize, ngrid)
 
         if blksize < ngrid:
@@ -323,13 +338,13 @@ class InterpolativeSeparableDensityFitting(FFTDF):
             lq = eta_kpt[q].T * fq
             wq = pbctools.fft(lq, mesh)
             rq = pbctools.ifft(wq * vq, mesh)
-            kern_q = lq @ rq.conj().T
+            kern_q = lib.dot(lq, rq.conj().T)
             lq = rq = wq = None
 
             metx_q = metx_kpt[q]
             coul_q = lstsq(metx_q, kern_q, tol=tol)
 
-            if self.verbose > 10:
+            if self.verbose >= 5:
                 e = metx_q @ coul_q @ metx_q - kern_q
                 log.debug("Error of lstsq = %6.2e", abs(e).max())
 
@@ -354,7 +369,7 @@ class InterpolativeSeparableDensityFitting(FFTDF):
         assert self._coul_kpt is not None
         return self._coul_kpt
 
-    def build(self, cisdf=10.0, inpx=None):
+    def build(self, cisdf=10.0):
         log = logger.new_logger(self, self.verbose)
 
         # If a pre-computed ISDF is available, load it
@@ -371,18 +386,25 @@ class InterpolativeSeparableDensityFitting(FFTDF):
 
         # [Step 1]: compute the interpolating functions
         # inpv_kpt is a (nkpt, nip, nao) array
-        if inpx is None:
-            inpx = select_interpolating_points(self, cisdf=cisdf)
-        else:
+        inpv_kpt = self._inpv_kpt
+        if inpv_kpt is not None:
             log.debug("Using pre-computed interpolating vectors, c0 is not used")
+        else:
+            inpv_kpt = self.build_inpv_kpt(cisdf=cisdf)
+            self._inpv_kpt = inpv_kpt
 
-        t0 = (process_clock(), perf_counter())
-        cell = self.cell
-        kpts = self.kpts
-        inpv_kpt = cell.pbc_eval_gto("GTOval", inpx, kpts=kpts)
-        inpv_kpt = numpy.asarray(inpv_kpt, dtype=numpy.complex128)
-        log.timer("building inpv_kpt", *t0)
-        nkpt, nip, nao = inpv_kpt.shape
+        # if inpx is None:
+        #     inpx = select_interpolating_points(self, cisdf=cisdf)
+        # else:
+        #     log.debug("Using pre-computed interpolating vectors, c0 is not used")
+
+        # t0 = (process_clock(), perf_counter())
+        # cell = self.cell
+        # kpts = self.kpts
+        # inpv_kpt = cell.pbc_eval_gto("GTOval", inpx, kpts=kpts)
+        # inpv_kpt = numpy.asarray(inpv_kpt, dtype=numpy.complex128)
+        # log.timer("building inpv_kpt", *t0)
+        # nkpt, nip, nao = inpv_kpt.shape
 
         # [Step 2]: compute the right-hand side of the least-square fitting
         # eta_kpt is a (ngrid, nip, nkpt) array
@@ -492,12 +514,14 @@ if __name__ == "__main__":
     cell.build(dump_input=False)
 
     nao = cell.nao_nr()
-    kmesh = [2, 2, 2] # 4, 4, 4]
+    # kmesh = [2, 2, 2] # 4, 4, 4]
+    kmesh = [4, 4, 4]
     nkpt = nspc = numpy.prod(kmesh)
     kpts = cell.get_kpts(kmesh)
 
     scf_obj = pyscf.pbc.scf.KRHF(cell, kpts=kpts)
     scf_obj.conv_tol = 1e-8
+    scf_obj.verbose = 5
     dm_kpts = scf_obj.get_init_guess(key="minao")
 
     log = logger.new_logger(None, 5)
