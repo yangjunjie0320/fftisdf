@@ -22,24 +22,24 @@ from pyscf.pbc.df.aft import _check_kpts
 from pyscf.pbc.df.fft import FFTDF
 
 from fft.isdf_jk import get_k_kpts
-from fft.isdf_jk import get_phase, kpts_to_kmesh
+from fft.isdf_jk import kpts_to_kmesh
+from fft.isdf_jk import get_phase_factor
 from fft.isdf_jk import spc_to_kpt, kpt_to_spc
 
 CHOLESKY_TOL = getattr(__config__, "fftisdf_cholesky_tol", 1e-30)
-CHOLESKY_MAX_SIZE = getattr(__config__, "fftisdf_cholesky_max_size", 40000)
-CONTRACT_MAX_SIZE = getattr(__config__, "fftisdf_contract_max_size", 40000)
+CHOLESKY_MAX_SIZE = getattr(__config__, "fftisdf_cholesky_max_size", 2000)
+CONTRACT_MAX_SIZE = getattr(__config__, "fftisdf_contract_max_size", 2000)
 
 # Naming convention:
 # *_kpt: k-space array, which shapes as (nkpt, x, x)
 # *_spc: super-cell stripe array, which shapes as (nspc, x, x)
 
 def contract(f_kpt, g_kpt, phase):
-    """
-    Contract two k-space arrays with the following steps:
-    [1] Matrix multiplication:       T_{ml}^k = \sum_n F_{mn}^k* G_{ln}^k
-    [2] kspace->supercell transform. T_{ml}^s <- T_{ml}^k
-    [3] Element-wise square:         X_{ml}^s = T_{ml}^s T_{ml}^s
-    [4] supercell->kspace transform. X_{ml}^k <- X_{ml}^s
+    r"""Contract two k-space arrays with the following steps:
+        [1] Matrix multiplication:       T_{ml}^k = \sum_n F_{mn}^k* G_{ln}^k
+        [2] kspace->supercell transform. T_{ml}^s <- T_{ml}^k
+        [3] Element-wise square:         X_{ml}^s = T_{ml}^s T_{ml}^s
+        [4] supercell->kspace transform. X_{ml}^k <- X_{ml}^s
     
     Args:
         f_kpt (ndarray): First k-space array, shape (k, m, n)
@@ -71,9 +71,10 @@ def contract(f_kpt, g_kpt, phase):
     return x_kpt
 
 def lstsq(a, b, tol=1e-10):
-    """
+    r"""
     Solve the Hermitian sandwich least-squares problem using SVD.
         A dot X dot A ~ B, where A is Hermitian
+
     Following the given steps:
         [1] SVD of A: A = U dot S dot Vh
         [2] Compute R[i, j] = 1 / S[i] * S[j]
@@ -116,53 +117,82 @@ def lstsq(a, b, tol=1e-10):
 
 def select_interpolating_points(df_obj, cisdf=None):
     log = logger.new_logger(df_obj, df_obj.verbose)
+    t0 = (process_clock(), perf_counter())
     
     cell = df_obj.cell
     nao = cell.nao_nr()
-    ng = g0.shape[0]
+    grids = df_obj.grids
+    coord = grids.coords
+    ngrid = coord.shape[0]
 
-    # wrap_around = df_obj.wrap_around
-    # kpts, kmesh = kpts_to_kmesh(cell, kpts, wrap_around)
-    # phase = get_phase(cell, kpts, kmesh=kmesh, wrap_around=wrap_around)[1]
-    # nkpt = len(kpts)
+    kpts = df_obj.kpts
+    phase = get_phase_factor(cell, kpts)
+    nimg, nkpt = phase.shape
 
-    # if kpts is None:
-    #     kpts = numpy.zeros((1, 3))
-
-    # x_kpt = cell.pbc_eval_gto("GTOval", g0, kpts=kpts)
-    # x_kpt = numpy.asarray(x_kpt, dtype=numpy.complex128)
-    # t = x_kpt.transpose(1, 0, 2).reshape(ng, -1)
-    # m0 = t.conj() @ t.T / numpy.sqrt(nkpt)
-    # m0 = m0.real ** 2
-
-    # chol, perm, rank = pivoted_cholesky(m0, tol=tol)
-    # nip = rank
-
-    # if c0 is not None:
-    #     nip = int(c0 * nao)
-    #     log.info("Cholesky rank = %d, c0 = %6.2f, nao = %d, nip = %d", rank, c0, nao, nip)
-    # else:
-    #     log.info("Cholesky rank = %d, nao = %d, nip = %d", rank, nao, nip)
-    #     log.info("Using all Cholesky vectors as interpolating points.")
-
-    # mask = perm[:nip]
-    # diag = numpy.diag(chol)
-    # s0 = numpy.sum(diag[:nip])
-    # s1 = numpy.sum(diag[nip:])
-
-    # log.info("Parent grid size = %d, selected grid size = %d", ng, nip)
-    # log.info("truncated values = %6.2e, estimated error = %6.2e", s0, s1)
-
-    # inpx = g0[mask]
-    # return inpx
+    ix = numpy.arange(ngrid)
+    if ngrid > CHOLESKY_MAX_SIZE:
+        blknum = (ngrid + CHOLESKY_MAX_SIZE - 1) // CHOLESKY_MAX_SIZE
+        blksize = ngrid // blknum + 1
+        
+        info = (lambda s: f"Cholesky decomposition for grids %{len(s)}d: %{len(s)}d")(str(ngrid))
+        aoR_loop = df_obj.aoR_loop(grids=grids, kpts=kpts, blksize=blksize)
     
+        weight = numpy.zeros(ngrid)        
+        for ao_etc_kpt, g0, g1 in aoR_loop:
+            ao_kpt = numpy.asarray(ao_etc_kpt[0], dtype=numpy.complex128)
+            m_kpt = contract(ao_kpt, ao_kpt, phase)
+            m0 = m_kpt[0].real
+
+            chol, perm, rank = pivoted_cholesky(m0, tol=CHOLESKY_TOL)
+            weight[g0 + perm] = numpy.diag(chol)
+
+            log.debug(info % (g0, g1) + ", rank = %d" % rank)
+
+        ix = numpy.argsort(weight)[-CHOLESKY_MAX_SIZE:]
+        ix = ix[weight[ix] > CHOLESKY_TOL]
+        ix = numpy.sort(ix)
+
+    print(ix.shape)
+    print(ix)
+    
+    nx = len(ix)
+    print(nx, coord[ix].shape)
+    phi_kpt = cell.pbc_eval_gto("GTOval", coord[ix], kpts=kpts)
+    phi_kpt = numpy.asarray(phi_kpt, dtype=numpy.complex128)
+    print(phi_kpt.shape)
+    metx0 = numpy.zeros((nx, nx), dtype=numpy.float64)
+    for k in range(nkpt):
+        phi_k = phi_kpt[k]
+        assert phi_k.shape == (nx, nao)
+
+        m_k = lib.dot(phi_k.conj(), phi_k.T)
+        m_k = m_k.real
+        metx0 += m_k ** 2
+    metx0 /= numpy.sqrt(nkpt)
+    print(metx0.min(), metx0.max(), metx0.shape)
+
+    chol, perm, rank = pivoted_cholesky(metx0, tol=CHOLESKY_TOL)
+    log.info("Parent grid size = %d, Cholesky rank = %d", ngrid, rank)
+
+    nip = rank
+    if cisdf is not None:
+        nip = min(nip, int(cisdf * nao))
+        log.info("nao = %d, cisdf = %6.2f, nip = %d", nao, cisdf, nip)
+    else:
+        log.info("nao = %d, nip = %d", nao, nip)
+        log.info("Using all Cholesky vectors as interpolating points.")
+    
+    log.timer("selecting interpolating points", *t0)
+    ix = perm[:nip]
+    return coord[ix]
+
 class InterpolativeSeparableDensityFitting(FFTDF):
-    wrap_around = False
     tol = 1e-8
-    _keys = {"tol", "wrap_around", "kconserv2", "kconserv3"}
+    _keys = {"tol", "kconserv2", "kconserv3"}
 
     def __init__(self, cell, kpts=numpy.zeros((1, 3))):
         FFTDF.__init__(self, cell, kpts)
+
         kconserv = get_kconserv(cell, kpts)
         self.kconserv3 = kconserv
         self.kconserv2 = kconserv[:, :, 0].T
@@ -177,36 +207,29 @@ class InterpolativeSeparableDensityFitting(FFTDF):
 
     def dump_flags(self, verbose=None):
         log = logger.new_logger(self, verbose)
+        
         log.info("\n")
         log.info("******** %s ********", self.__class__)
         log.info("mesh = %s (%d PWs)", self.mesh, numpy.prod(self.mesh))
-        log.info("len(kpts) = %d", len(self.kpts))
         log.info("tol = %s", self.tol)
-        log.info("wrap_around = %s", self.wrap_around)
+
+        kpts, kmesh = kpts_to_kmesh(self.cell, self.kpts)
+        log.info("kmesh = %s", kmesh)
+
         if self._isdf_to_save is not None:
             log.info("isdf_to_save = %s", self._isdf_to_save)
         return self
-
-    select_inpx = select_inpx
 
     def build_inpv_kpt(self, inpx=None, tol=1e-10):
         log = logger.new_logger(self, self.verbose)
         
         cell = self.cell
-        wrap_around = self.wrap_around
-        kpts, kmesh = kpts_to_kmesh(cell, self.kpts, wrap_around)
+        kpts = self.kpts
+        kpts, kmesh, wrap_around = kpts_to_kmesh(cell, kpts)
 
         mesh = cell.mesh
         if inpx is None:
-            m0 = numpy.asarray(mesh)
-            c0 = self.c0
-            if numpy.prod(m0) > PARENT_GRID_SIZE_MAX:
-                f = PARENT_GRID_SIZE_MAX / numpy.prod(m0)
-                m0 = numpy.floor(m0 * f ** (1/3) * 0.5)
-                m0 = (m0 * 2 + 1).astype(int)
-                log.info("Original mesh %s is too large, reduced to %s as parent grid.", mesh, m0)
-            g0 = cell.gen_uniform_grids(m0)
-            inpx = select_inpx(self, g0=g0, c0=c0, tol=tol, kpts=kpts)
+            inpx = select_interpolating_points(self)
         else:
             log.debug("Using pre-computed interpolating vectors, c0 is not used")
 
@@ -220,9 +243,8 @@ class InterpolativeSeparableDensityFitting(FFTDF):
         max_memory = max(2000, self.max_memory - current_memory()[0]) # in MB
 
         cell = self.cell
-        wrap_around = self.wrap_around
-        kpts, kmesh = kpts_to_kmesh(cell, self.kpts, wrap_around)
-        phase = get_phase(cell, kpts, kmesh=kmesh, wrap_around=wrap_around)[1]
+        kpts = self.kpts
+        phase = get_phase_factor(cell, kpts)
 
         grids = self.grids
         ngrid = grids.coords.shape[0]
@@ -230,14 +252,14 @@ class InterpolativeSeparableDensityFitting(FFTDF):
 
         blksize = int(max_memory * 1e6 * 0.1) // (nkpt * nip * 16)
         blksize = max(blksize, 1)
-        blksize = min(CONTRACT_BLKSIZE_MAX, blksize, ngrid)
+        blksize = min(CONTRACT_MAX_SIZE, blksize, ngrid)
 
-        fswap = self._fswap
         if blksize < ngrid:
             blknum = (ngrid + blksize - 1) // blksize
             blksize = ngrid // blknum + 1
         
         eta_kpt = None
+        fswap = self._fswap
         if fswap is None:
             log.debug("\nIn-core version is used for eta_kpt.")
             log.debug("memory required: %6.2e GB", nkpt * nip * 16 * ngrid / 1e9)
@@ -260,8 +282,9 @@ class InterpolativeSeparableDensityFitting(FFTDF):
             ao_kpt = numpy.asarray(ao_etc_kpt[0], dtype=numpy.complex128)
 
             # eta_kpt_g0g1: (nkpt, nip, g1 - g0)
-            eta_kpt_g0g1 = contract(inpv_kpt, ao_kpt, phase)
-            eta_kpt_g0g1 = eta_kpt_g0g1.transpose(0, 2, 1)
+            eta_kpt_g0g1 = contract(ao_kpt, inpv_kpt, phase)
+            # eta_kpt_g0g1 = eta_kpt_g0g1.transpose(0, 2, 1)
+            assert eta_kpt_g0g1.shape == (nkpt, g1 - g0, nip)
 
             eta_kpt[:, g0:g1, :] = eta_kpt_g0g1
             eta_kpt_g0g1 = None
@@ -272,18 +295,18 @@ class InterpolativeSeparableDensityFitting(FFTDF):
 
     def build_coul_kpt(self, inpv_kpt, eta_kpt):
         log = logger.new_logger(self, self.verbose)
-        tol2 = self.tol ** 2
+        tol = self.tol
 
         cell = self.cell
-        wrap_around = self.wrap_around
-        kpts, kmesh = kpts_to_kmesh(cell, self.kpts, wrap_around)
-        phase = get_phase(cell, kpts, kmesh=kmesh, wrap_around=wrap_around)[1]
+        kpts = self.kpts
+        phase = get_phase_factor(cell, kpts)
+
         mesh = cell.mesh
         v0 = cell.get_Gv(mesh)
         
         grids = self.grids
-        coords = grids.coords
-        ngrid = coords.shape[0]
+        coord = grids.coords
+        ngrid = coord.shape[0]
 
         nkpt, nip, nao = inpv_kpt.shape
         metx_kpt = contract(inpv_kpt, inpv_kpt, phase)
@@ -294,7 +317,7 @@ class InterpolativeSeparableDensityFitting(FFTDF):
         for q in range(nkpt):
             t0 = (process_clock(), perf_counter())
             
-            fq = numpy.exp(-1j * coords @ kpts[q])
+            fq = numpy.exp(-1j * coord @ kpts[q])
             vq = pbctools.get_coulG(cell, k=kpts[q], exx=False, Gv=v0, mesh=mesh)
             vq *= cell.vol / ngrid
             lq = eta_kpt[q].T * fq
@@ -304,7 +327,12 @@ class InterpolativeSeparableDensityFitting(FFTDF):
             lq = rq = wq = None
 
             metx_q = metx_kpt[q]
-            coul_q = lstsq(metx_q, kern_q, tol=tol2)
+            coul_q = lstsq(metx_q, kern_q, tol=tol)
+
+            if self.verbose > 10:
+                e = metx_q @ coul_q @ metx_q - kern_q
+                log.debug("Error of lstsq = %6.2e", abs(e).max())
+
             coul_kpt[q] = coul_q
             log.timer(info % (q + 1), *t0)
 
@@ -326,7 +354,7 @@ class InterpolativeSeparableDensityFitting(FFTDF):
         assert self._coul_kpt is not None
         return self._coul_kpt
 
-    def build(self, inpx=None):
+    def build(self, cisdf=10.0, inpx=None):
         log = logger.new_logger(self, self.verbose)
 
         # If a pre-computed ISDF is available, load it
@@ -343,9 +371,16 @@ class InterpolativeSeparableDensityFitting(FFTDF):
 
         # [Step 1]: compute the interpolating functions
         # inpv_kpt is a (nkpt, nip, nao) array
-        tol2 = self.tol ** 2
+        if inpx is None:
+            inpx = select_interpolating_points(self, cisdf=cisdf)
+        else:
+            log.debug("Using pre-computed interpolating vectors, c0 is not used")
+
         t0 = (process_clock(), perf_counter())
-        inpv_kpt = self.build_inpv_kpt(tol=tol2, inpx=inpx)
+        cell = self.cell
+        kpts = self.kpts
+        inpv_kpt = cell.pbc_eval_gto("GTOval", inpx, kpts=kpts)
+        inpv_kpt = numpy.asarray(inpv_kpt, dtype=numpy.complex128)
         log.timer("building inpv_kpt", *t0)
         nkpt, nip, nao = inpv_kpt.shape
 
@@ -416,9 +451,8 @@ class InterpolativeSeparableDensityFitting(FFTDF):
         
         g0 = g1 = 0
         for ao_etc_kpt in block_loop:
-            coords = ao_etc_kpt[4]
             g0 = g1
-            g1 += coords.shape[0]
+            g1 += ao_etc_kpt[4].shape[0]
             yield ao_etc_kpt, g0, g1
     
     def get_jk(self, dm, hermi=1, kpts=None, kpts_band=None,
@@ -475,11 +509,8 @@ if __name__ == "__main__":
         from fft import FFTISDF
         scf_obj.with_df = FFTISDF(cell, kpts=kpts)
         scf_obj.with_df.verbose = 10
-        scf_obj.with_df.tol = 1e-12
 
         df_obj = scf_obj.with_df
-        df_obj.c0 = c0
-        df_obj.verbose = 10
         df_obj.build()
 
         vj, vk = df_obj.get_jk(dm_kpts, with_j=True, with_k=True, exxdiv="ewald")

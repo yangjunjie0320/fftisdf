@@ -6,17 +6,36 @@ from pyscf import lib
 from pyscf.pbc.lib.kpts_helper import is_zero
 
 from pyscf.pbc import tools as pbctools
-from pyscf.pbc.tools.k2gamma import get_phase
 from pyscf.pbc.df.df_jk import _format_dms, _format_kpts_band, _format_jks
 
 PYSCF_MAX_MEMORY = int(os.environ.get("PYSCF_MAX_MEMORY", 2000))
 
-def kpts_to_kmesh(cell, kpts, wrap_around=False):
+def kpts_to_kmesh(cell, kpts): # do I really need this function?
     if not isinstance(kpts, numpy.ndarray):
         kpts = numpy.asarray(kpts.kpts)
     kmesh = pbctools.k2gamma.kpts_to_kmesh(cell, kpts - kpts[0])
-    assert numpy.allclose(kpts, cell.get_kpts(kmesh, wrap_around=wrap_around))
     return kpts, kmesh
+
+def get_phase_factor(cell, kpts):
+    """Wrap pyscf.pbc.tools.k2gamma.get_phase to get the phase factor
+    for the k-space grid. 
+
+    The output phase factor is a 2D array, with shape (nimg, nkpt),
+    should be a square matrix, i.e. nimg == nkpt.
+    """
+    if not isinstance(kpts, numpy.ndarray):
+        kpts = numpy.asarray(kpts.kpts)
+    
+    # obtain kmesh
+    kmesh = pbctools.k2gamma.kpts_to_kmesh(cell, kpts - kpts[0])
+    
+    # check if kpts come from wrap_around
+    is_wrap_around = numpy.allclose(kpts, cell.get_kpts(kmesh, wrap_around=True))
+    assert numpy.allclose(kpts, cell.get_kpts(kmesh, wrap_around=is_wrap_around))
+    
+    # phase factor
+    phase = pbctools.k2gamma.get_phase(cell, kpts, kmesh, is_wrap_around)[1]
+    return phase
 
 def spc_to_kpt(m_spc, phase):
     """Convert a matrix from the stripe form (in super-cell)
@@ -43,15 +62,12 @@ def get_k_kpts(df_obj, dm_kpts, hermi=1, kpts=numpy.zeros((1, 3)), kpts_band=Non
     assert hermi == 1
 
     cell = df_obj.cell
+    nao = cell.nao_nr()
+
     kpts = numpy.asarray(kpts)
     assert numpy.all(kpts == df_obj.kpts)
-
-    wrap_around = df_obj.wrap_around
-    kpts, kmesh = kpts_to_kmesh(cell, df_obj.kpts, wrap_around)
-    phase = get_phase(cell, kpts, kmesh, wrap_around)[1]
-
-    nao = cell.nao_nr()
-    nkpt = nspc = numpy.prod(kmesh)
+    phase = get_phase_factor(cell, kpts)
+    nspc, nkpt = phase.shape
 
     dm_kpts = lib.asarray(dm_kpts, order='C')
     dms = _format_dms(dm_kpts, kpts)
