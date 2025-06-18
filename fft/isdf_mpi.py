@@ -114,12 +114,12 @@ class WithMPI(fft.isdf.ISDF):
         eta_kpt = fswap.create_dataset("eta_kpt", shape=(nkpt, ngrid, nip), dtype=numpy.complex128)
         comm.barrier()
 
-        aoR_loop = self.aoR_loop(grids, kpts, 0, blksize=blksize)
+        block_loop = self.gen_block_loop(blksize=blksize)
         log.debug("\nComputing eta_kpt")
         info = (lambda s: f"eta_kpt[ %{len(s)}d: %{len(s)}d]")(str(ngrid))
-        for ig, (ao_etc_kpt, g0, g1) in enumerate(aoR_loop):
+        for iblock, (ao_etc_kpt, g0, g1) in enumerate(block_loop):
             t0 = (process_clock(), perf_counter())
-            if ig % size != rank:
+            if iblock % size != rank:
                 continue
             ao_kpt = numpy.asarray(ao_etc_kpt[0], dtype=numpy.complex128)
 
