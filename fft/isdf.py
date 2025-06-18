@@ -166,20 +166,13 @@ def select_interpolating_points(df_obj, cisdf=None):
             metx_g0g1 = numpy.einsum("kgm,khm->gh", ao_g0g1_kpt, ao_g0g1_kpt.conj())
             metx_g0g1 = (metx_g0g1.real) ** 2 / numpy.sqrt(nkpt)
             chol, perm, rank = pivoted_cholesky(metx_g0g1, tol=CHOLESKY_TOL)
-            print(chol.shape, perm.shape, rank)
 
-            pi = numpy.eye(g1 - g0)[:, perm]
-            n1 = numpy.linalg.norm(chol, axis=0)
-            assert n1.shape == (g1 - g0,)
-
-            mm = metx_g0g1[perm[:rank], :][:, perm[:rank]]
-            print(mm.shape)
-            
-            chol, perm, rank = pivoted_cholesky(mm, tol=CHOLESKY_TOL)
-            print(chol.shape, perm.shape, rank)
+            weight[g0+perm] = numpy.diag(chol)
+            for i1 in range(g1 - g0):
+                i2 = g0 + perm[i1]
+                assert weight[i2] == chol[i1, i1]
             assert 1 == 2
 
-            weight[g0+perm[:rank]] = numpy.diag(chol)
             print(weight)
             print(numpy.diag(chol)[perm])
             print(perm)
