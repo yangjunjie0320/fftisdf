@@ -1,13 +1,16 @@
 import unittest
+from unittest import TestCase
 
 import numpy, pyscf
 from pyscf import pbc
+from pyscf.pbc.df import FFTDF
+from pyscf.pbc.lib.kpts_helper import loop_kkk
 
 import fft
 import fft.isdf_ao2mo
 from fft.isdf_ao2mo import ao2mo_spc_slow
 
-class EriSpcTest(unittest.TestCase):
+class EriSpcTest(TestCase):
     cell = None
     tol = 1e-6
 
@@ -52,12 +55,7 @@ class EriSpcTest(unittest.TestCase):
         nao = cell.nao_nr()
         nmo = nao * 2
         nmo2 = nmo * nmo
-
-        from fft.isdf_jk import get_phase, kpts_to_kmesh
-        wrap_around = self.isdf.wrap_around
-        kpts, kmesh = kpts_to_kmesh(cell, kpts, wrap_around)
-        phase = get_phase(cell, kpts, kmesh, wrap_around)[1]
-
+    
         coeff_spc = numpy.random.random((nkpts, nao, nmo))
         coeff_kpt = numpy.einsum("Rmp,Rk->kmp", coeff_spc, phase)
         coeff_kpt = coeff_kpt.reshape(nkpts, nao, nmo)

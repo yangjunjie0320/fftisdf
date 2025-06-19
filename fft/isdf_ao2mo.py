@@ -20,11 +20,6 @@ def get_ao_eri(df_obj, kpts=None, compact=False):
 
     cell = df_obj.cell
     kpts = numpy.asarray(kpts)
-    assert numpy.all(kpts == df_obj.kpts)
-
-    phase = get_phase_factor(cell, kpts)
-    nspc, nkpt = phase.shape
-
     kconserv2 = df_obj.kconserv2
     kconserv3 = df_obj.kconserv3
 
@@ -40,7 +35,7 @@ def get_ao_eri(df_obj, kpts=None, compact=False):
 
     xk1 = inpv_kpt[k1].reshape(nip, nao, 1)
     xk2 = inpv_kpt[k2].reshape(nip, 1, nao)
-    xk3 = inpv_kpt[k3].reshape(nip, 1, nao)
+    xk3 = inpv_kpt[k3].reshape(nip, nao, 1)
     xk4 = inpv_kpt[k4].reshape(nip, 1, nao)
 
     kq = kconserv2[k1, k2]
@@ -60,16 +55,8 @@ def get_mo_eri(df_obj, mo_coeff_kpts, kpts=None, compact=False):
     # TODO: compact is not supported yet
     assert compact is False, "compact is not supported"
 
-    if kpts is None:
-        kpts = df_obj.kpts
-
     cell = df_obj.cell
     kpts = numpy.asarray(kpts)
-    assert numpy.all(kpts == df_obj.kpts)
-
-    phase = get_phase_factor(cell, kpts)
-    nspc, nkpt = phase.shape
-
     kconserv2 = df_obj.kconserv2
     kconserv3 = df_obj.kconserv3
 

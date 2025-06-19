@@ -1,4 +1,5 @@
 import unittest
+from unittest import TestCase
 
 import numpy, pyscf
 from pyscf import pbc
@@ -8,7 +9,7 @@ from pyscf.pbc.lib.kpts_helper import loop_kkk
 import fft
 import fft.isdf_ao2mo
 
-class EriKptsTest(unittest.TestCase):
+class EriKptsTest(TestCase):
     cell = None
     tol = 1e-6
 
@@ -30,15 +31,15 @@ class EriKptsTest(unittest.TestCase):
         cell.build(dump_input=False)
 
         kmesh = [1, 1, 3]
-        kpts = cell.make_kpts(kmesh)
+        wrap_around = True
+        kpts = cell.make_kpts(kmesh, wrap_around=wrap_around)
 
         self.cell = cell
-        self.kmesh = kmesh
         self.kpts = kpts
 
         self.fftdf_obj = FFTDF(cell, kpts=kpts)
         self.isdf_obj = fft.ISDF(cell, kpts=kpts)
-        self.isdf_obj.build(cisdf=None)
+        self.isdf_obj.build(cisdf=20.0)
 
     def test_fftdf_eri_ao_7d(self):
         tol = self.tol
@@ -57,9 +58,11 @@ class EriKptsTest(unittest.TestCase):
             eri_ao_ref = self.fftdf_obj.get_ao_eri(kpts, compact=False)
             eri_ao_sol = eri_ao_7d[k1, k2, k3]
 
+            eri_ao_ref = eri_ao_ref.reshape(nao, nao, nao, nao)
+            eri_ao_sol = eri_ao_sol.reshape(nao, nao, nao, nao)
+
             err = abs(eri_ao_sol - eri_ao_ref).max()
             msg = f"Error in fftdf_eri_ao_7d for kpts [{k1}, {k2}, {k3}] is {err:6.4e}."
-            print(msg)
             self.assertLess(err, tol, msg)
 
     def test_fftisdf_get_ao_eri(self):
@@ -75,9 +78,11 @@ class EriKptsTest(unittest.TestCase):
             eri_ao_ref = self.fftdf_obj.get_ao_eri(kpts, compact=False)
             eri_ao_sol = self.isdf_obj.get_ao_eri(kpts, compact=False)
 
+            eri_ao_ref = eri_ao_ref.reshape(nao, nao, nao, nao)
+            eri_ao_sol = eri_ao_sol.reshape(nao, nao, nao, nao)
+
             err = abs(eri_ao_sol - eri_ao_ref).max()
             msg = f"Error in fftisdf_get_ao_eri for [{k1}, {k2}, {k3}] is {err:6.4e}."
-            print(msg)
             self.assertLess(err, tol, msg)
 
     def test_fftisdf_eri_ao_7d(self):
@@ -93,7 +98,6 @@ class EriKptsTest(unittest.TestCase):
 
         err = abs(eri_7d_sol - eri_7d_ref).max()
         msg = f"Error in eri_ao_7d is {err:6.4e}."
-        print(msg)
         self.assertLess(err, tol, msg)
 
     def test_fftisdf_ao2mo_7d(self):
@@ -110,7 +114,6 @@ class EriKptsTest(unittest.TestCase):
 
         err = abs(eri_7d_sol - eri_7d_ref).max()
         msg = f"Error in eri_ao_7d is {err:6.4e}."
-        print(msg)
         self.assertLess(err, tol, msg)
 
 if __name__ == "__main__":
