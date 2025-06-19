@@ -21,10 +21,9 @@ from pyscf.pbc import tools as pbctools
 from pyscf.pbc.df.aft import _check_kpts
 from pyscf.pbc.df.fft import FFTDF
 
-from fft.isdf_jk import get_k_kpts
-from fft.isdf_jk import kpts_to_kmesh
-from fft.isdf_jk import get_phase_factor
-from fft.isdf_jk import spc_to_kpt, kpt_to_spc
+from fft import isdf_ao2mo
+from fft.isdf_jk import spc_to_kpt, kpts_to_kmesh
+from fft.isdf_jk import kpt_to_spc, get_phase_factor
 
 from pyscf.pbc.dft.gen_grid import BLKSIZE
 CHOLESKY_TOL = getattr(__config__, "fftisdf_cholesky_tol", 1e-20)
@@ -203,7 +202,7 @@ def select_interpolating_points(df_obj, cisdf=None):
     return coord[ix]
 
 class InterpolativeSeparableDensityFitting(FFTDF):
-    tol = 1e-6
+    tol = 1e-8
     _keys = {"tol", "kconserv2", "kconserv3"}
 
     def __init__(self, cell, kpts=numpy.zeros((1, 3))):
@@ -220,6 +219,12 @@ class InterpolativeSeparableDensityFitting(FFTDF):
 
         self._coul_kpt = None
         self._inpv_kpt = None
+
+    get_eri = isdf_ao2mo.get_ao_eri
+    get_mo_eri = isdf_ao2mo.get_mo_eri
+    ao2mo = isdf_ao2mo.ao2mo_7d
+    ao2mo_spc = isdf_ao2mo.ao2mo_spc
+    ao2mo_7d = isdf_ao2mo.ao2mo_7d
 
     def dump_flags(self, verbose=None):
         log = logger.new_logger(self, verbose)
@@ -243,8 +248,6 @@ class InterpolativeSeparableDensityFitting(FFTDF):
         return self
 
     def build_inpv_kpt(self, cisdf=10.0):
-        log = logger.new_logger(self, self.verbose)
-        
         cell = self.cell
         kpts = self.kpts
         inpx = select_interpolating_points(self, cisdf=cisdf)
@@ -473,6 +476,7 @@ class InterpolativeSeparableDensityFitting(FFTDF):
 
         vj = vk = None
         if with_k:
+            from fft.isdf_jk import get_k_kpts
             vk = get_k_kpts(self, dm, hermi, kpts, kpts_band, exxdiv)
 
         if with_j:
@@ -509,8 +513,8 @@ if __name__ == "__main__":
 
     scf_obj = pyscf.pbc.scf.KRHF(cell, kpts=kpts)
     scf_obj.conv_tol = 1e-8
-    scf_obj.verbose = 5
-    dm_kpts = scf_obj.get_init_guess(key="minao")
+    scf_obj.verbose = 0
+    dm_kpts = None
 
     log = logger.new_logger(None, 5)
 
@@ -523,20 +527,18 @@ if __name__ == "__main__":
         df_obj = scf_obj.with_df
         df_obj.build(cisdf=c0)
 
-        vj, vk = df_obj.get_jk(dm_kpts, with_j=True, with_k=True, exxdiv="ewald")
-        e_tot = scf_obj.e_tot
-        res.append((c0, e_tot, vj, vk))
+        scf_obj.kernel(dm_kpts)
+        dm_kpts = scf_obj.make_rdm1()
+
+        e_tot = scf_obj.energy_tot(dm_kpts)
+        res.append((c0, e_tot))
 
     from pyscf.pbc.df.fft import FFTDF
     scf_obj.with_df = FFTDF(cell, kpts)
     scf_obj.with_df.verbose = 0
-    vj_ref, vk_ref = scf_obj.with_df.get_jk(dm_kpts, with_j=True, with_k=True, exxdiv="ewald")
-    e_ref = scf_obj.energy_tot(dm_kpts)
+    scf_obj.kernel(dm_kpts)
+    e_ref = scf_obj.e_tot
 
-    print("-> FFTDF e_tot = %12.8f" % e_ref)
-    for ires, (c0, e_sol, vj_sol, vk_sol) in enumerate(res):
-        err = []
-        err.append(abs(e_sol - e_ref))
-        err.append(abs(vj_sol - vj_ref).max())
-        err.append(abs(vk_sol - vk_ref).max())
-        print("-> FFTISDF c0 = %6s, ene_err = % 6.2e, vj_err = % 6.2e, vk_err = % 6.2e" % (c0, *err))
+    for ires, (c0, e_sol) in enumerate(res):
+        err = abs(e_sol - e_ref) / abs(e_ref)
+        print("-> FFTISDF c0 = %6s, ene_err = % 6.2e" % (c0, err))
