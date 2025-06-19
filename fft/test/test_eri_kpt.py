@@ -2,6 +2,7 @@ import unittest
 
 import numpy, pyscf
 from pyscf import pbc
+from pyscf.pbc.df import FFTDF
 
 import fft
 import fft.isdf_ao2mo
@@ -34,11 +35,11 @@ class EriKptsTest(unittest.TestCase):
         self.kmesh = kmesh
         self.kpts = kpts
 
-        self.fftdf = pbc.df.FFTDF(cell, kpts=kpts)
-        self.isdf  = fft.ISDF(cell, kpts=kpts)
+        self.fftdf = FFTDF(cell, kpts=kpts)
+        self.fftisdf = fft.ISDF(cell, kpts=kpts)
         g0 = cell.gen_uniform_grids(self.cell.mesh)
-        inpx = self.isdf.select_inpx(g0=g0, kpts=kpts, tol=1e-30)
-        self.isdf.tol = 1e-8
+        inpx = self.fftisdf.select_inpx(g0=g0, kpts=kpts, tol=1e-30)
+        self.fftisdf.tol = 1e-8
         self.isdf.build(inpx=inpx)
 
     def test_fftdf_eri_ao_7d(self):
