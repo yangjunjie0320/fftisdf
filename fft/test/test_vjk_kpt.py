@@ -1,56 +1,35 @@
-import unittest
+import os, unittest
+from unittest import TestCase
 
 import numpy, pyscf
-from pyscf import pbc
+from pyscf.pbc.lib.kpts_helper import loop_kkk
 
-import fft
-
-class VjkKptsTest(unittest.TestCase):
+class VjkKptTest(TestCase):
     cell = None
     tol = 1e-6
 
-    def setUp(self, kmesh=None):
-        a = 2.0
-        lv = numpy.diag([a, a, a * 2])
-        atom =  [['He', (0.5 * a, 0.5 * a, 0.5 * a)]]
-        atom += [['He', (0.5 * a, 0.5 * a, 1.5 * a)]]
+    def setUp(self):
+        kwargs = {
+            "basis": "gth-dzvp", "tol": self.tol,
+            "ke_cutoff": 20.0, "kmesh": [1, 1, 3],
+            "cell": "he2-cubic-cell", 
+            "isdf_to_save": None,
+            "output": "/dev/null",
+        }
 
-        cell = pyscf.pbc.gto.Cell()
-        cell.a = lv
-        cell.ke_cutoff = 20.0
-        cell.atom = atom
-        cell.basis = "gth-dzvp"
-        cell.pseudo = "gth-pbe"
-        cell.verbose = 0
-        cell.output = '/dev/null'
-        cell.symmetry = False
-        cell.build(dump_input=False)
-
-        kmesh = [1, 1, 3]
-        kpts = cell.make_kpts(kmesh)
-
-        self.cell = cell
-        self.kmesh = kmesh
-        self.kpts = kpts
-
-        self.fftdf = pbc.df.FFTDF(cell, kpts=kpts)
-        self.isdf  = fft.ISDF(cell, kpts=kpts)
-        g0 = cell.gen_uniform_grids(self.cell.mesh)
-        inpx = self.isdf.select_inpx(g0=g0, kpts=kpts, tol=1e-30)
-        self.isdf.tol = 1e-8
-        self.isdf.build(inpx=inpx)
+        from fft.test.test_slow import setup
+        setup(self, **kwargs)
 
     def test_krhf_vjk_kpts(self):
         cell = self.cell
         kpts = self.kpts
-        kmesh = self.kmesh
         tol = self.tol
 
         krhf = pyscf.pbc.scf.KRHF(cell, kpts=kpts)
         dm0 = krhf.get_init_guess(key="minao")
 
-        vj_ref, vk_ref = self.fftdf.get_jk(dm0, hermi=1, kpts=kpts)
-        vj_sol, vk_sol = self.isdf.get_jk(dm0, hermi=1, kpts=kpts)
+        vj_ref, vk_ref = self.fftdf_obj.get_jk(dm0, hermi=1, kpts=kpts)
+        vj_sol, vk_sol = self.isdf_obj.get_jk(dm0, hermi=1, kpts=kpts)
 
         err_k = abs(vk_sol - vk_ref).max()
         err_j = abs(vj_sol - vj_ref).max()
@@ -64,14 +43,13 @@ class VjkKptsTest(unittest.TestCase):
     def test_krhf_vjk_kpts_ewald(self):
         cell = self.cell
         kpts = self.kpts
-        kmesh = self.kmesh
         tol = self.tol
         
         krhf = pyscf.pbc.scf.KRHF(cell, kpts=kpts)
         dm0 = krhf.get_init_guess(key="minao")
         
-        vj_ref, vk_ref = self.fftdf.get_jk(dm0, hermi=1, kpts=kpts, exxdiv="ewald")
-        vj_sol, vk_sol = self.isdf.get_jk(dm0, hermi=1, kpts=kpts, exxdiv="ewald")
+        vj_ref, vk_ref = self.fftdf_obj.get_jk(dm0, hermi=1, kpts=kpts, exxdiv="ewald")
+        vj_sol, vk_sol = self.isdf_obj.get_jk(dm0, hermi=1, kpts=kpts, exxdiv="ewald")
         
         err_k = abs(vk_sol - vk_ref).max()
         err_j = abs(vj_sol - vj_ref).max()
@@ -85,14 +63,13 @@ class VjkKptsTest(unittest.TestCase):
     def test_kuhf_vjk_kpts(self):
         cell = self.cell
         kpts = self.kpts
-        kmesh = self.kmesh
         tol = self.tol
 
         kuhf = pyscf.pbc.scf.KUHF(cell, kpts=kpts)
         dm0 = kuhf.get_init_guess(key="minao")
 
-        vj_ref, vk_ref = self.fftdf.get_jk(dm0, hermi=1, kpts=kpts)
-        vj_sol, vk_sol = self.isdf.get_jk(dm0, hermi=1, kpts=kpts)
+        vj_ref, vk_ref = self.fftdf_obj.get_jk(dm0, hermi=1, kpts=kpts)
+        vj_sol, vk_sol = self.isdf_obj.get_jk(dm0, hermi=1, kpts=kpts)
 
         err_k = abs(vk_sol - vk_ref).max()
         err_j = abs(vj_sol - vj_ref).max()
@@ -106,14 +83,13 @@ class VjkKptsTest(unittest.TestCase):
     def test_kuhf_vjk_kpts_ewald(self):
         cell = self.cell
         kpts = self.kpts
-        kmesh = self.kmesh
         tol = self.tol
         
         kuhf = pyscf.pbc.scf.KUHF(cell, kpts=kpts)
         dm0 = kuhf.get_init_guess(key="minao")
         
-        vj_ref, vk_ref = self.fftdf.get_jk(dm0, hermi=1, kpts=kpts, exxdiv="ewald")
-        vj_sol, vk_sol = self.isdf.get_jk(dm0, hermi=1, kpts=kpts, exxdiv="ewald")
+        vj_ref, vk_ref = self.fftdf_obj.get_jk(dm0, hermi=1, kpts=kpts, exxdiv="ewald")
+        vj_sol, vk_sol = self.isdf_obj.get_jk(dm0, hermi=1, kpts=kpts, exxdiv="ewald")
         
         err_k = abs(vk_sol - vk_ref).max()
         err_j = abs(vj_sol - vj_ref).max()

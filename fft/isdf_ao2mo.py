@@ -187,17 +187,18 @@ def ao2mo_spc(df_obj, mo_coeff_kpts, kpts=None):
         mo_coeff_kpts = list(mo_coeff_kpts)
     assert len(mo_coeff_kpts) == 4
 
-    # get the Coulomb kernel
     inpv_kpt = df_obj.inpv_kpt
     coul_kpt = df_obj.coul_kpt
     nip = coul_kpt.shape[1]
 
-    x1_kpt = lib.dot(inpv_kpt, mo_coeff_kpts[0])
+    x1_kpt = [lib.dot(xk, ck) for xk, ck in zip(inpv_kpt, mo_coeff_kpts[0])]
+    x1_kpt = numpy.array(x1_kpt)
     x1_spc = kpt_to_spc(x1_kpt, phase)
     n1 = x1_spc.shape[-1]
     x1_spc = x1_spc.reshape(nspc * nip, n1, 1)
 
-    x2_kpt = lib.dot(inpv_kpt, mo_coeff_kpts[1])
+    x2_kpt = [lib.dot(xk, ck) for xk, ck in zip(inpv_kpt, mo_coeff_kpts[1])]
+    x2_kpt = numpy.array(x2_kpt)
     x2_spc = kpt_to_spc(x2_kpt, phase)
     n2 = x2_spc.shape[-1]
     x2_spc = x2_spc.reshape(nspc * nip, 1, n2)
@@ -207,12 +208,14 @@ def ao2mo_spc(df_obj, mo_coeff_kpts, kpts=None):
     rho12_kpt = spc_to_kpt(rho12_spc, phase)
     rho12_kpt = rho12_kpt.reshape(nkpt, nip, n1 * n2)
 
-    x3_kpt = lib.dot(inpv_kpt, mo_coeff_kpts[2])
+    x3_kpt = [lib.dot(xk, ck) for xk, ck in zip(inpv_kpt, mo_coeff_kpts[2])]
+    x3_kpt = numpy.array(x3_kpt)
     x3_spc = kpt_to_spc(x3_kpt, phase)
     n3 = x3_spc.shape[-1]
     x3_spc = x3_spc.reshape(nspc * nip, n3, 1)
 
-    x4_kpt = lib.dot(inpv_kpt, mo_coeff_kpts[3])
+    x4_kpt = [lib.dot(xk, ck) for xk, ck in zip(inpv_kpt, mo_coeff_kpts[3])]
+    x4_kpt = numpy.array(x4_kpt)
     x4_spc = kpt_to_spc(x4_kpt, phase)
     n4 = x4_spc.shape[-1]
     x4_spc = x4_spc.reshape(nspc * nip, 1, n4)
@@ -257,29 +260,37 @@ def ao2mo_spc_slow(df_obj, mo_coeff_kpts, kpts=None):
     nip = coul_kpt.shape[1]
 
     coul_spc = numpy.einsum("kIJ,Rk,Sk->RISJ", coul_kpt, phase.conj(), phase, optimize=True)
-    coul_spc = coul_spc.reshape(nspc, nip, nspc, nip).real
+    coul_spc = coul_spc.reshape(nspc * nip, nspc * nip).real
 
-    x1_kpt = lib.dot(inpv_kpt, mo_coeff_kpts[0])
+    x1_kpt = [lib.dot(xk, ck) for xk, ck in zip(inpv_kpt, mo_coeff_kpts[0])]
+    x1_kpt = numpy.array(x1_kpt)
     x1_spc = kpt_to_spc(x1_kpt, phase)
-    x1_spc = x1_spc.reshape(nspc * nip, -1, 1)
+    n1 = x1_spc.shape[-1]
+    x1_spc = x1_spc.reshape(nspc * nip, n1, 1)
 
-    x2_kpt = lib.dot(inpv_kpt, mo_coeff_kpts[1])
+    x2_kpt = [lib.dot(xk, ck) for xk, ck in zip(inpv_kpt, mo_coeff_kpts[1])]
+    x2_kpt = numpy.array(x2_kpt)
     x2_spc = kpt_to_spc(x2_kpt, phase)
-    x2_spc = x2_spc.reshape(nspc * nip, -1, 1)
+    n2 = x2_spc.shape[-1]
+    x2_spc = x2_spc.reshape(nspc * nip, 1, n2)
 
     rho12_spc = x1_spc * x2_spc
-    rho12_spc = rho12_spc.reshape(nspc * nip, -1)
+    rho12_spc = rho12_spc.reshape(nspc * nip, n1 * n2)
 
-    x3_kpt = lib.dot(inpv_kpt, mo_coeff_kpts[2])
+    x3_kpt = [lib.dot(xk, ck) for xk, ck in zip(inpv_kpt, mo_coeff_kpts[2])]
+    x3_kpt = numpy.array(x3_kpt)
     x3_spc = kpt_to_spc(x3_kpt, phase)
-    x3_spc = x3_spc.reshape(nspc * nip, -1)
+    n3 = x3_spc.shape[-1]
+    x3_spc = x3_spc.reshape(nspc * nip, n3, 1)
 
-    x4_kpt = lib.dot(inpv_kpt, mo_coeff_kpts[3])
+    x4_kpt = [lib.dot(xk, ck) for xk, ck in zip(inpv_kpt, mo_coeff_kpts[3])]
+    x4_kpt = numpy.array(x4_kpt)
     x4_spc = kpt_to_spc(x4_kpt, phase)
-    x4_spc = x4_spc.reshape(nspc * nip, -1)
+    n4 = x4_spc.shape[-1]
+    x4_spc = x4_spc.reshape(nspc * nip, 1, n4)
 
     rho34_spc = x3_spc * x4_spc
-    rho34_spc = rho34_spc.reshape(nspc * nip, -1)
+    rho34_spc = rho34_spc.reshape(nspc * nip, n3 * n4)
 
     eri_spc = reduce(lib.dot, (rho12_spc.T, coul_spc, rho34_spc.conj()))
     return eri_spc.real * nspc
