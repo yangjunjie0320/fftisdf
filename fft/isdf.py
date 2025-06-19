@@ -55,10 +55,8 @@ def contract(f_kpt, g_kpt, phase):
     assert g_kpt.shape == (k, l, n)
 
     # [1] Matrix multiplication
-    a_kpt = f_kpt.conj()
-    b_kpt = g_kpt.transpose(0, 2, 1)
-    t_kpt = numpy.matmul(a_kpt, b_kpt)
-    t_kpt = t_kpt.reshape(k, m, l)
+    t_kpt = [lib.dot(fk.conj(), gk.T) for fk, gk in zip(f_kpt, g_kpt)]
+    t_kpt = numpy.array(t_kpt).reshape(k, m, l)
 
     # [2] kspace->supercell transform
     t_spc = kpt_to_spc(t_kpt, phase)
@@ -221,6 +219,7 @@ class InterpolativeSeparableDensityFitting(FFTDF):
         self._inpv_kpt = None
 
     get_eri = isdf_ao2mo.get_ao_eri
+    get_ao_eri = isdf_ao2mo.get_ao_eri
     get_mo_eri = isdf_ao2mo.get_mo_eri
     ao2mo = isdf_ao2mo.ao2mo_7d
     ao2mo_spc = isdf_ao2mo.ao2mo_spc

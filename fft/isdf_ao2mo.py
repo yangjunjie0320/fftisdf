@@ -18,9 +18,6 @@ def get_ao_eri(df_obj, kpts=None, compact=False):
     # TODO: compact is not supported yet
     assert compact is False, "compact is not supported"
 
-    if kpts is None:
-        kpts = df_obj.kpts
-
     cell = df_obj.cell
     kpts = numpy.asarray(kpts)
     assert numpy.all(kpts == df_obj.kpts)
@@ -146,20 +143,24 @@ def ao2mo_7d(df_obj, mo_coeff_kpts, kpts=None):
     coul_kpt = df_obj.coul_kpt
     nip = coul_kpt.shape[1]
 
-    x1_kpt = lib.dot(inpv_kpt, mo_coeff_kpts[0])
-    n1 = x1_kpt.shape[1]
+    x1_kpt = [lib.dot(xk, ck) for xk, ck in zip(inpv_kpt, mo_coeff_kpts[0])]
+    x1_kpt = numpy.array(x1_kpt)
+    n1 = x1_kpt.shape[-1]
     x1_kpt = x1_kpt.reshape(nkpt, nip, n1, 1)
 
-    x2_kpt = lib.dot(inpv_kpt, mo_coeff_kpts[1])
-    n2 = x2_kpt.shape[1]
+    x2_kpt = [lib.dot(xk, ck) for xk, ck in zip(inpv_kpt, mo_coeff_kpts[1])]
+    x2_kpt = numpy.array(x2_kpt)
+    n2 = x2_kpt.shape[-1]
     x2_kpt = x2_kpt.reshape(nkpt, nip, 1, n2)
 
-    x3_kpt = lib.dot(inpv_kpt, mo_coeff_kpts[2])
-    n3 = x3_kpt.shape[1]
-    x3_kpt = x3_kpt.reshape(nkpt, nip, 1, n3)
+    x3_kpt = [lib.dot(xk, ck) for xk, ck in zip(inpv_kpt, mo_coeff_kpts[2])]
+    x3_kpt = numpy.array(x3_kpt)
+    n3 = x3_kpt.shape[-1]
+    x3_kpt = x3_kpt.reshape(nkpt, nip, n3, 1)
 
-    x4_kpt = lib.dot(inpv_kpt, mo_coeff_kpts[3])
-    n4 = x4_kpt.shape[1]
+    x4_kpt = [lib.dot(xk, ck) for xk, ck in zip(inpv_kpt, mo_coeff_kpts[3])]
+    x4_kpt = numpy.array(x4_kpt)
+    n4 = x4_kpt.shape[-1]
     x4_kpt = x4_kpt.reshape(nkpt, nip, 1, n4)
 
     shape = (nkpt, nkpt, nkpt,) + (n1, n2, n3, n4)
@@ -206,12 +207,12 @@ def ao2mo_spc(df_obj, mo_coeff_kpts, kpts=None):
 
     x1_kpt = lib.dot(inpv_kpt, mo_coeff_kpts[0])
     x1_spc = kpt_to_spc(x1_kpt, phase)
-    n1 = x1_spc.shape[2]
+    n1 = x1_spc.shape[-1]
     x1_spc = x1_spc.reshape(nspc * nip, n1, 1)
 
     x2_kpt = lib.dot(inpv_kpt, mo_coeff_kpts[1])
     x2_spc = kpt_to_spc(x2_kpt, phase)
-    n2 = x2_spc.shape[2]
+    n2 = x2_spc.shape[-1]
     x2_spc = x2_spc.reshape(nspc * nip, 1, n2)
 
     rho12_spc = x1_spc * x2_spc
@@ -221,12 +222,12 @@ def ao2mo_spc(df_obj, mo_coeff_kpts, kpts=None):
 
     x3_kpt = lib.dot(inpv_kpt, mo_coeff_kpts[2])
     x3_spc = kpt_to_spc(x3_kpt, phase)
-    n3 = x3_spc.shape[2]
+    n3 = x3_spc.shape[-1]
     x3_spc = x3_spc.reshape(nspc * nip, n3, 1)
 
     x4_kpt = lib.dot(inpv_kpt, mo_coeff_kpts[3])
     x4_spc = kpt_to_spc(x4_kpt, phase)
-    n4 = x4_spc.shape[2]
+    n4 = x4_spc.shape[-1]
     x4_spc = x4_spc.reshape(nspc * nip, 1, n4)
 
     rho34_spc = x3_spc * x4_spc
