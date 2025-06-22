@@ -6,7 +6,7 @@ import scipy.linalg
 from scipy.linalg import svd
 
 import pyscf
-from pyscf import __config__
+
 
 # pyscf.lib
 from pyscf import lib
@@ -25,6 +25,7 @@ from fft import isdf_ao2mo
 from fft.isdf_jk import spc_to_kpt, kpts_to_kmesh
 from fft.isdf_jk import kpt_to_spc, get_phase_factor
 
+from pyscf import __config__
 from pyscf.pbc.dft.gen_grid import BLKSIZE
 CHOLESKY_TOL = getattr(__config__, "fftisdf_cholesky_tol", 1e-20)
 CHOLESKY_MAX_SIZE = getattr(__config__, "fftisdf_cholesky_max_size", 20000)
@@ -98,7 +99,8 @@ def lstsq(a, b, tol=1e-10):
     v = vh.conj().T
     vt = lib.dot(v, t)
     x = lib.dot(vt, vh)
-    return x
+
+    return x, numpy.sum(s > tol)
 
 def compute_blksize(ntot, nmax=2000, chunk=BLKSIZE):
     """Participate the grid into slices. Output an integer
@@ -142,14 +144,6 @@ def select_interpolating_points(df_obj, cisdf=None):
     kpts = df_obj.kpts
     phase = get_phase_factor(cell, kpts)
     nimg, nkpt = phase.shape
-    
-    memory_needed = nkpt * nao * ngrid * 16 / 1e6 # in MB
-    print(f"memory_needed = {memory_needed / 1e3:6.2e} GB")
-    memory_available = df_obj.max_memory - current_memory()[0] # in MB
-    print(f"memory_available = {memory_available / 1e3:6.2e} GB")
-
-    if memory_needed > memory_available:
-        log.warn("Memory needed is %6.2e GB, but available memory is %6.2e GB", memory_needed / 1e3, memory_available / 1e3)
 
     ix = numpy.arange(ngrid)
     if ngrid > CHOLESKY_MAX_SIZE:
@@ -266,23 +260,30 @@ class InterpolativeSeparableDensityFitting(FFTDF):
         ngrid = grids.coords.shape[0]
         nkpt, nip, nao = inpv_kpt.shape
 
-        blksize = compute_blksize(ngrid, CONTRACT_MAX_SIZE, BLKSIZE)
+        blksize_max = int(max_memory * 1e6 * 0.2) // (nkpt * nip * 16)
+        blksize_max = max(BLKSIZE, blksize_max)
+        blksize_max = min(CONTRACT_MAX_SIZE, blksize_max)
+        blksize = compute_blksize(ngrid, blksize_max, BLKSIZE)
         
         eta_kpt = None
         fswap = self._fswap
+
+        shape = (nkpt, ngrid, nip)
+        dtype = numpy.complex128
+
         if fswap is None:
             log.debug("\nIn-core version is used for eta_kpt.")
-            log.debug("memory required: %6.2e GB", nkpt * nip * 16 * ngrid / 1e9)
+            log.debug("approximate memory required: %6.2e GB", numpy.prod(shape) * 16 / 1e9)
             log.debug("max_memory: %6.2e GB", max_memory / 1e3)
-            eta_kpt = numpy.zeros((nkpt, ngrid, nip), dtype=numpy.complex128)
+            eta_kpt = numpy.zeros(shape, dtype=dtype)
         else:
             log.debug("\nOut-core version is used for eta_kpt.")
-            log.debug("disk space required: %6.2e GB.", nkpt * nip * 16 * ngrid / 1e9)
+            log.debug("disk space required: %6.2e GB", numpy.prod(shape) * 16 / 1e9)
             log.debug("blksize = %d, ngrid = %d", blksize, ngrid)
-            log.debug("memory needed for each block:   %6.2e GB", nkpt * nip * 16 * blksize / 1e9)
-            log.debug("memory needed for each k-point: %6.2e GB", nip * ngrid * 16 / 1e9)
+            log.debug("approximate memory needed for each block:   %6.2e GB", nkpt * nip * 16 * blksize / 1e9)
+            log.debug("approximate memory needed for each k-point: %6.2e GB", nip * ngrid * 16 / 1e9)
             log.debug("max_memory: %6.2e GB", max_memory / 1e3)
-            eta_kpt = fswap.create_dataset("eta_kpt", shape=(nkpt, ngrid, nip), dtype=numpy.complex128)
+            eta_kpt = fswap.create_dataset("eta_kpt", shape=shape, dtype=dtype)
         
         log.debug("\nComputing eta_kpt")
         info = (lambda s: f"eta_kpt[ %{len(s)}d: %{len(s)}d]")(str(ngrid))
@@ -337,11 +338,12 @@ class InterpolativeSeparableDensityFitting(FFTDF):
             lq = rq = wq = None
 
             metx_q = metx_kpt[q]
-            coul_q = lstsq(metx_q, kern_q, tol=tol)
-            err = metx_q @ coul_q @ metx_q - kern_q
-            err = abs(err).max() / abs(kern_q).max()
-            if err > tol:
-                log.debug("Error of lstsq is larger than tol: %6.2e", err)
+            res = lstsq(metx_q, kern_q, tol=tol)
+            coul_q = res[0]
+            if log.verbose >= logger.DEBUG1:
+                err = metx_q @ coul_q @ metx_q - kern_q
+                err = abs(err).max() / abs(kern_q).max()
+                log.debug("\nMetric tensor rank: %d / %d, lstsq error: %6.2e", res[1], nip, err)
 
             coul_q *= numpy.sqrt(ngrid)
             coul_q = (coul_q + coul_q.conj().T) / 2
@@ -372,9 +374,12 @@ class InterpolativeSeparableDensityFitting(FFTDF):
 
         # If a pre-computed ISDF is available, load it
         if self._isdf is not None:
-            log.info("Loading ISDF results from %s, skipping build", self._isdf)
-            inpv_kpt = load(self._isdf, "inpv_kpt")
-            coul_kpt = load(self._isdf, "coul_kpt")
+            isdf_to_read = self._isdf
+            assert os.path.exists(isdf_to_read)
+
+            log.info("Loading ISDF results from %s, skipping build", isdf_to_read)
+            inpv_kpt = load(isdf_to_read, "inpv_kpt")
+            coul_kpt = load(isdf_to_read, "coul_kpt")
             self._inpv_kpt = inpv_kpt
             self._coul_kpt = coul_kpt
             return inpv_kpt, coul_kpt
@@ -434,7 +439,7 @@ class InterpolativeSeparableDensityFitting(FFTDF):
             dump(isdf_to_save, "inpv_kpt", inpv_kpt)
             dump(isdf_to_save, "coul_kpt", coul_kpt)
             nbytes = inpv_kpt.nbytes + coul_kpt.nbytes
-            log.info("ISDF results are saved to %s, size = %d MB", isdf_to_save, nbytes / 1e6)
+            log.info("ISDF results are saved to %s, size = %6.2e GB", isdf_to_save, nbytes / 1e9)
 
     def gen_block_loop(self, deriv=0, blksize=None):
         grids = self.grids
