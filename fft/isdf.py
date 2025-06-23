@@ -147,7 +147,7 @@ def select_interpolating_points(df_obj, cisdf=None):
     ix = numpy.arange(ngrid)
     if ngrid > CHOLESKY_MAX_SIZE:
         max_memory = max(2000, df_obj.max_memory - current_memory()[0])
-        blksize_max = int(max_memory * 1e6 * 0.2) // (nkpt * nao * 16)
+        blksize_max = int(max_memory * 1e6 * 0.5) // (nkpt * nao * 16)
         blksize_max = min(blksize_max, CHOLESKY_MAX_SIZE)
         blksize = compute_blksize(ngrid, blksize_max, BLKSIZE)
 

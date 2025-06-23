@@ -102,7 +102,7 @@ if __name__ == "__main__":
         "tol": 1e-6,
         "verbose": 0,
         "basis": "gth-dzvp",
-        "cisdf": 20.0,
+        "cisdf": None,
         "verbose": 6
     }
     
