@@ -138,8 +138,7 @@ def select_interpolating_points(df_obj, cisdf=None):
     cell = df_obj.cell
     nao = cell.nao_nr()
     grids = df_obj.grids
-    coord = grids.coords
-    ngrid = coord.shape[0]
+    ngrid = grids.coords.shape[0]
 
     kpts = df_obj.kpts
     phase = get_phase_factor(cell, kpts)
@@ -148,14 +147,14 @@ def select_interpolating_points(df_obj, cisdf=None):
     ix = numpy.arange(ngrid)
     if ngrid > CHOLESKY_MAX_SIZE:
         max_memory = max(2000, df_obj.max_memory - current_memory()[0])
-        blksize_max = int(max_memory * 1e6 * 0.1) // (nkpt * nao * 16)
+        blksize_max = int(max_memory * 1e6 * 0.2) // (nkpt * nao * 16)
         blksize_max = min(blksize_max, CHOLESKY_MAX_SIZE)
-
         blksize = compute_blksize(ngrid, blksize_max, BLKSIZE)
-        assert blksize <= blksize_max
 
-        print(f"{ngrid = }, {CHOLESKY_MAX_SIZE = }, {BLKSIZE = }")
-        print(f"{blksize = }, {ngrid // blksize = }, {ngrid % blksize = }")
+        log.debug("Select interpolating points with local Cholesky decomposition:")
+        log.debug("CHOLESKY_MAX_SIZE = %d, BLKSIZE = %d", CHOLESKY_MAX_SIZE, BLKSIZE)
+        log.debug("ngrid = %d, blksize = %d", ngrid, blksize)
+        log.debug("ngrid // blksize = %d, ngrid %% blksize = %d", ngrid // blksize, ngrid % blksize)
 
         info = (lambda s: f"Cholesky decomposition for grids [%{len(s)+1}d, %{len(s)+1}d]")(str(ngrid))
         block_loop = df_obj.gen_block_loop(blksize=blksize)
@@ -173,8 +172,9 @@ def select_interpolating_points(df_obj, cisdf=None):
         ix = numpy.argsort(weight)[-CHOLESKY_MAX_SIZE:]
         ix = ix[weight[ix] > CHOLESKY_TOL]
         ix = numpy.sort(ix)
-
-    phi_kpt = cell.pbc_eval_gto("GTOval", coord[ix], kpts=kpts)
+    
+    coord = grids.coords[ix]
+    phi_kpt = cell.pbc_eval_gto("GTOval", coord, kpts=kpts)
     phi_kpt = numpy.asarray(phi_kpt, dtype=numpy.complex128)
     metx = compute_metx(phi_kpt)
 
@@ -184,14 +184,19 @@ def select_interpolating_points(df_obj, cisdf=None):
     nip = rank
     if cisdf is not None:
         nip = min(nip, int(cisdf * nao))
-        log.info("nao = %d, cisdf = %6.2f, nip = %d", nao, cisdf, nip)
     else:
-        log.info("nao = %d, nip = %d", nao, nip)
         log.info("Using all Cholesky vectors as interpolating points.")
-    
+
+    log.info("nao = %d, nip = %d, cisdf = %6.2f", nao, nip, nip / nao)
+    log.info("Largest Cholesky weight:   %6.2e", numpy.diag(chol)[0])
+    log.info("Smallest remaining weight: %6.2e", numpy.diag(chol)[nip - 1])
+    log.info("Largest discarded weight:  %6.2e", numpy.diag(chol)[nip])
+    log.info("Total remaining weight:    %6.2e", numpy.diag(chol)[:nip].sum())
+    log.info("Total discarded weight:    %6.2e", numpy.diag(chol)[nip:].sum())
+
     log.timer("selecting interpolating points", *t0)
-    ix = perm[:nip]
-    return coord[ix]
+    mask = perm[:nip]
+    return coord[mask]
 
 class InterpolativeSeparableDensityFitting(FFTDF):
     tol = 1e-8
