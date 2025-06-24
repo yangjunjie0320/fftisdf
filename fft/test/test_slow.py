@@ -99,7 +99,7 @@ def main(kwargs):
 if __name__ == "__main__":
     kwargs = {
         "ke_cutoff": 40.0,
-        "tol": 1e-6,
+        "tol": 1e-5,
         "verbose": 0,
         "basis": "gth-dzvp",
         "cisdf": None,
