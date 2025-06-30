@@ -273,16 +273,18 @@ class InterpolativeSeparableDensityFitting(FFTDF):
         eta_kpt = None
         fswap = self._fswap
 
-        shape = (nkpt, ngrid, nip)
+        shape = (nkpt * nip, ngrid)
         dtype = numpy.complex128
 
         if fswap is None:
             log.debug("\nIn-core version is used for eta_kpt.")
+            log.debug("shape = %s", shape)
             log.debug("approximate memory required: %6.2e GB", numpy.prod(shape) * 16 / 1e9)
             log.debug("max_memory: %6.2e GB", max_memory / 1e3)
             eta_kpt = numpy.zeros(shape, dtype=dtype)
         else:
             log.debug("\nOut-core version is used for eta_kpt.")
+            log.debug("shape = %s", shape)
             log.debug("disk space required: %6.2e GB", numpy.prod(shape) * 16 / 1e9)
             log.debug("blksize = %d, ngrid = %d", blksize, ngrid)
             log.debug("approximate memory needed for each block:   %6.2e GB", nkpt * nip * 16 * blksize / 1e9)
@@ -294,15 +296,17 @@ class InterpolativeSeparableDensityFitting(FFTDF):
         info = (lambda s: f"eta_kpt[ %{len(s)}d: %{len(s)}d]")(str(ngrid))
         block_loop = self.gen_block_loop(blksize=blksize)
         for ao_etc_kpt, g0, g1 in block_loop:
+            
             t0 = (process_clock(), perf_counter())
             ao_kpt = numpy.asarray(ao_etc_kpt[0], dtype=numpy.complex128)
 
-            # eta_kpt_g0g1: (nkpt, nip, g1 - g0)
-            eta_kpt_g0g1 = contract(ao_kpt, inpv_kpt, phase)
-            eta_kpt_g0g1 = eta_kpt_g0g1.conj()
-            assert eta_kpt_g0g1.shape == (nkpt, g1 - g0, nip)
-
-            eta_kpt[:, g0:g1, :] = eta_kpt_g0g1
+            # eta_kpt_g0g1: (nkpt, g1 - g0, nip)
+            # eta_kpt_g0g1 = contract(ao_kpt, inpv_kpt, phase)
+            eta_kpt_g0g1 = contract(inpv_kpt, ao_kpt, phase)
+            assert eta_kpt_g0g1.shape == (nkpt, nip, g1 - g0)
+            
+            eta_kpt_g0g1 = eta_kpt_g0g1.reshape(nkpt * nip, -1)
+            eta_kpt[:, g0:g1] = eta_kpt_g0g1
             eta_kpt_g0g1 = None
 
             log.timer(info % (g0, g1), *t0)
@@ -332,11 +336,12 @@ class InterpolativeSeparableDensityFitting(FFTDF):
         info = (lambda s: f"coul_kpt[ %{len(s)}d / {s}]")(str(nkpt))
         for q in range(nkpt):
             t0 = (process_clock(), perf_counter())
+            q0, q1 = q * nip, (q + 1) * nip
             
             fq = numpy.exp(-1j * coord @ kpts[q])
             vq = pbctools.get_coulG(cell, k=kpts[q], exx=False, Gv=v0, mesh=mesh)
             vq *= cell.vol / ngrid
-            lq = eta_kpt[q].T * fq
+            lq = eta_kpt[q0:q1].reshape(nip, -1) * fq
             wq = pbctools.fft(lq, mesh)
             rq = pbctools.ifft(wq * vq, mesh)
             kern_q = lib.dot(lq, rq.conj().T) / numpy.sqrt(ngrid)
