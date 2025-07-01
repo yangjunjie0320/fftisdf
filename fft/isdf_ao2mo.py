@@ -57,6 +57,8 @@ def get_mo_eri(df_obj, mo_coeff_kpts, kpts=None, compact=False):
 
     cell = df_obj.cell
     kpts = numpy.asarray(kpts)
+    nkpt = kpts.shape[0]
+
     kconserv2 = df_obj.kconserv2
     kconserv3 = df_obj.kconserv3
 
@@ -105,7 +107,7 @@ def get_mo_eri(df_obj, mo_coeff_kpts, kpts=None, compact=False):
     eri_k1k2k3 = eri_k1k2k3.reshape(n1, n2, n3, n4)
     return eri_k1k2k3
 
-def ao2mo_7d(df_obj, mo_coeff_kpts, kpts=None):
+def ao2mo_7d(df_obj, mo_coeff_kpts, kpts=None, factor=1.0, out=None):
     if kpts is None:
         kpts = df_obj.kpts
 
@@ -151,7 +153,12 @@ def ao2mo_7d(df_obj, mo_coeff_kpts, kpts=None):
     x4_kpt = x4_kpt.reshape(nkpt, nip, 1, n4)
 
     shape = (nkpt, nkpt, nkpt,) + (n1, n2, n3, n4)
-    eri_7d = numpy.zeros(shape, dtype=numpy.complex128)
+    if out is None:
+        eri_7d = numpy.zeros(shape, dtype=numpy.complex128)
+    else:
+        eri_7d = out
+    assert eri_7d.shape == shape
+
     for k1, k2 in product(range(nkpt), repeat=2):
         kq = kconserv2[k1, k2]
         coul_q = coul_kpt[kq]
@@ -168,7 +175,7 @@ def ao2mo_7d(df_obj, mo_coeff_kpts, kpts=None):
             eri_k1k2k3 = eri_k1k2k3.reshape(n1, n2, n3, n4)
             eri_7d[k1, k2, k3] = eri_k1k2k3
     
-    return eri_7d
+    return eri_7d * factor
 
 def ao2mo_spc(df_obj, mo_coeff_kpts, kpts=None):
     if kpts is None:
