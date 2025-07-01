@@ -15,10 +15,12 @@ def fftisdf_eri_spc_slow_mo1(test_obj):
 
     nmo = nao
     coeff_spc = numpy.random.random((nkpt, nao, nmo))
+    norm = numpy.linalg.norm(coeff_spc, axis=1)
+    coeff_spc /= norm[:, None]
+    assert norm.shape == (nkpt, nmo)
+
     coeff_kpt = numpy.einsum("Rmp,Rk->kmp", coeff_spc, phase)
     coeff_kpt = coeff_kpt.reshape(nkpt, nao, nmo)
-    norm = numpy.linalg.norm(coeff_kpt, axis=2)
-    coeff_kpt /= norm[:, :, None]
 
     eri_7d = test_obj.fftdf_obj.ao2mo_7d(coeff_kpt, kpts=kpts)
     eri_spc_ref = numpy.einsum("KLMmnsl->mnsl", eri_7d)
@@ -43,12 +45,14 @@ def fftisdf_eri_spc_slow_mo4(test_obj):
 
     coeff_kpt = []
     nmos = [nao // 2, nao, nao // 2, nao]
-    for nmo in nmos:
+    for nmo in nmos:        
         c_spc = numpy.random.random((nkpt, nao, nmo))
+        norm = numpy.linalg.norm(c_spc, axis=1)
+        c_spc /= norm[:, None]
+        assert norm.shape == (nkpt, nmo)
+        
         c_kpt = numpy.einsum("Rmp,Rk->kmp", c_spc, phase)
         c_kpt = c_kpt.reshape(nkpt, nao, nmo)
-        norm = numpy.linalg.norm(c_kpt, axis=2)
-        c_kpt /= norm[:, :, None]
         coeff_kpt.append(c_kpt)
 
     eri_7d = test_obj.fftdf_obj.ao2mo_7d(coeff_kpt, kpts=kpts)
@@ -74,10 +78,12 @@ def fftisdf_eri_spc_mo1(test_obj):
     
     nmo = nao
     coeff_spc = numpy.random.random((nkpt, nao, nmo))
+    norm = numpy.linalg.norm(coeff_spc, axis=1)
+    coeff_spc /= norm[:, None]
+    assert norm.shape == (nkpt, nmo)
+
     coeff_kpt = numpy.einsum("Rmp,Rk->kmp", coeff_spc, phase)
     coeff_kpt = coeff_kpt.reshape(nkpt, nao, nmo)
-    norm = numpy.linalg.norm(coeff_kpt, axis=2)
-    coeff_kpt /= norm[:, :, None]
 
     eri_7d = test_obj.fftdf_obj.ao2mo_7d(coeff_kpt, kpts=kpts)
     eri_spc_ref = numpy.einsum("KLMmnsl->mnsl", eri_7d)
@@ -103,10 +109,12 @@ def fftisdf_eri_spc_mo4(test_obj):
     coeff_kpt = []
     for nmo in nmos:
         c_spc = numpy.random.random((nkpt, nao, nmo))
+        norm = numpy.linalg.norm(c_spc, axis=1)
+        c_spc /= norm[:, None]
+        assert norm.shape == (nkpt, nmo)
+        
         c_kpt = numpy.einsum("Rmp,Rk->kmp", c_spc, phase)
         c_kpt = c_kpt.reshape(nkpt, nao, nmo)
-        norm = numpy.linalg.norm(c_kpt, axis=2)
-        c_kpt /= norm[:, :, None]
         coeff_kpt.append(c_kpt)
 
     eri_7d = test_obj.fftdf_obj.ao2mo_7d(coeff_kpt, kpts=kpts)
@@ -129,7 +137,6 @@ class EriSpcTest(TestCase):
             "ke_cutoff": 20.0, 
             "kmesh": [1, 1, 3],
             "cell": "he2-cubic-cell", 
-            "isdf_to_save": None,
             "output": "/dev/null", # suppress output
             "verbose": 0, # suppress output
         }

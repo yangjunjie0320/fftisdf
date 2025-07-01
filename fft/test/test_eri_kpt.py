@@ -49,10 +49,12 @@ def fftisdf_ao2mo_7d(test_obj):
     nkpt = len(test_obj.kpts)
     nao = test_obj.cell.nao_nr()
 
-    coeff_kpt  = numpy.random.random((nkpt, nao, nao)) * 1j
-    coeff_kpt += numpy.random.random((nkpt, nao, nao))
-    norm = numpy.linalg.norm(coeff_kpt, axis=2)
-    coeff_kpt /= norm[:, :, None]
+    nmo = nao
+    coeff_kpt  = numpy.random.random((nkpt, nao, nmo)) * 1j
+    coeff_kpt += numpy.random.random((nkpt, nao, nmo))
+    norm = numpy.linalg.norm(coeff_kpt, axis=1)
+    coeff_kpt /= norm[:, None]
+    assert norm.shape == (nkpt, nmo)
 
     eri_7d_ref = test_obj.fftdf_obj.ao2mo_7d(coeff_kpt, kpts=kpts)
     eri_7d_sol = test_obj.isdf_obj.ao2mo_7d(coeff_kpt, kpts=kpts)
@@ -70,7 +72,6 @@ class EriKptTest(TestCase):
             "ke_cutoff": 30.0, 
             "kmesh": [1, 1, 3],
             "cell": "he2-cubic-cell", 
-            "isdf_to_save": None,
             "output": "/dev/null", # suppress output
             "verbose": 0, # suppress output
         }
