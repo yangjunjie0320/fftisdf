@@ -264,8 +264,9 @@ class InterpolativeSeparableDensityFitting(FFTDF):
         grids = self.grids
         ngrid = grids.coords.shape[0]
         nkpt, nip, nao = inpv_kpt.shape
-
-        blksize_max = int(max_memory * 1e6 * 0.2) // (nkpt * nip * 16)
+        
+        blksize_max = max_memory * 1e6
+        blksize_max = int(blksize_max * 0.2) // (nkpt * nip * 16)
         blksize_max = max(BLKSIZE, blksize_max)
         blksize_max = min(CONTRACT_MAX_SIZE, blksize_max)
         blksize = compute_blksize(ngrid, blksize_max, BLKSIZE)
@@ -296,16 +297,12 @@ class InterpolativeSeparableDensityFitting(FFTDF):
         info = (lambda s: f"eta_kpt[ %{len(s)}d: %{len(s)}d]")(str(ngrid))
         block_loop = self.gen_block_loop(blksize=blksize)
         for ao_etc_kpt, g0, g1 in block_loop:
-            
             t0 = (process_clock(), perf_counter())
             ao_kpt = numpy.asarray(ao_etc_kpt[0], dtype=numpy.complex128)
 
-            # eta_kpt_g0g1: (nkpt, g1 - g0, nip)
-            # eta_kpt_g0g1 = contract(ao_kpt, inpv_kpt, phase)
             eta_kpt_g0g1 = contract(inpv_kpt, ao_kpt, phase)
-            assert eta_kpt_g0g1.shape == (nkpt, nip, g1 - g0)
-            
-            eta_kpt_g0g1 = eta_kpt_g0g1.reshape(nkpt * nip, -1)
+            eta_kpt_g0g1 = eta_kpt_g0g1.reshape(nkpt * nip, g1 - g0)
+
             eta_kpt[:, g0:g1] = eta_kpt_g0g1
             eta_kpt_g0g1 = None
 
@@ -341,24 +338,27 @@ class InterpolativeSeparableDensityFitting(FFTDF):
             fq = numpy.exp(-1j * coord @ kpts[q])
             vq = pbctools.get_coulG(cell, k=kpts[q], exx=False, Gv=v0, mesh=mesh)
             vq *= cell.vol / ngrid
-            lq = eta_kpt[q0:q1].reshape(nip, -1) * fq
+            lq = eta_kpt[q0:q1, :] * fq
+
             wq = pbctools.fft(lq, mesh)
             rq = pbctools.ifft(wq * vq, mesh)
-            kern_q = lib.dot(lq, rq.conj().T) / numpy.sqrt(ngrid)
+            rq = rq.conj()
+
+            kern_q = lib.dot(lq, rq.T) / numpy.sqrt(ngrid)
             lq = rq = wq = None
 
             metx_q = metx_kpt[q]
             res = lstsq(metx_q, kern_q, tol=tol)
             coul_q = res[0]
+            coul_q = (coul_q + coul_q.conj().T) / 2
             if log.verbose >= logger.DEBUG1:
                 err = metx_q @ coul_q @ metx_q - kern_q
                 err = abs(err).max() / abs(kern_q).max()
                 log.debug("\nMetric tensor rank: %d / %d, lstsq error: %6.2e", res[1], nip, err)
+                
+            coul_kpt[q] = coul_q * numpy.sqrt(ngrid)
+            coul_q = None
 
-            coul_q *= numpy.sqrt(ngrid)
-            coul_q = (coul_q + coul_q.conj().T) / 2
-
-            coul_kpt[q] = coul_q
             log.timer(info % (q + 1), *t0)
 
         return coul_kpt

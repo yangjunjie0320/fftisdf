@@ -105,10 +105,11 @@ class WithMPI(fft.isdf.ISDF):
         blksize_max = min(CONTRACT_MAX_SIZE, blksize_max)
         blksize = compute_blksize(ngrid, blksize_max, BLKSIZE)
         
-        shape = (nkpt, ngrid, nip)
+        shape = (nkpt * nip, ngrid)
         dtype = numpy.complex128
 
         log.debug("\nMPI version is used for eta_kpt")
+        log.debug("shape = %s", shape)
         log.debug("disk space required: %6.2e GB", numpy.prod(shape) * 16 / 1e9)
         log.debug("blksize = %d, ngrid = %d", blksize, ngrid)
         log.debug("approximate memory needed for each block:   %6.2e GB", nkpt * nip * 16 * blksize / 1e9)
@@ -129,12 +130,10 @@ class WithMPI(fft.isdf.ISDF):
                 continue
             ao_kpt = numpy.asarray(ao_etc_kpt[0], dtype=numpy.complex128)
 
-            # eta_kpt_g0g1: (nkpt, nip, g1 - g0)
-            eta_kpt_g0g1 = contract(ao_kpt, inpv_kpt, phase)
-            eta_kpt_g0g1 = eta_kpt_g0g1.conj()
-            assert eta_kpt_g0g1.shape == (nkpt, g1 - g0, nip)
+            eta_kpt_g0g1 = contract(inpv_kpt, ao_kpt, phase)
+            eta_kpt_g0g1 = eta_kpt_g0g1.reshape(nkpt * nip, g1 - g0)
 
-            eta_kpt[:, g0:g1, :] = eta_kpt_g0g1
+            eta_kpt[:, g0:g1] = eta_kpt_g0g1
             eta_kpt_g0g1 = None
 
             log.timer(info % (g0, g1), *t0)
@@ -178,30 +177,32 @@ class WithMPI(fft.isdf.ISDF):
         info = (lambda s: f"coul_kpt[ %{len(s)}d / {s}]")(str(nkpt))
         for q in range(nkpt):
             t0 = (process_clock(), perf_counter())
+            q0, q1 = q * nip, (q + 1) * nip
             if q % size != rank:
                 continue
             
             fq = numpy.exp(-1j * coord @ kpts[q])
             vq = pbctools.get_coulG(cell, k=kpts[q], exx=False, Gv=v0, mesh=mesh)
             vq *= cell.vol / ngrid
-            lq = eta_kpt[q].T * fq
+            lq = eta_kpt[q0:q1, :] * fq
+
             wq = pbctools.fft(lq, mesh)
             rq = pbctools.ifft(wq * vq, mesh)
-            kern_q = lib.dot(lq, rq.conj().T) / numpy.sqrt(ngrid)
+            rq = rq.conj()
+
+            kern_q = lib.dot(lq, rq.T) / numpy.sqrt(ngrid)
             lq = rq = wq = None
 
             metx_q = metx_kpt[q]
             res = lstsq(metx_q, kern_q, tol=tol)
             coul_q = res[0]
+            coul_q = (coul_q + coul_q.conj().T) / 2
             if log.verbose >= logger.DEBUG1:
                 err = metx_q @ coul_q @ metx_q - kern_q
                 err = abs(err).max() / abs(kern_q).max()
                 log.debug("\nMetric tensor rank: %d / %d, lstsq error: %6.2e", res[1], nip, err)
-
-            coul_q *= numpy.sqrt(ngrid)
-            coul_q = (coul_q + coul_q.conj().T) / 2
-
-            coul_kpt[q] = coul_q
+                
+            coul_kpt[q] = coul_q * numpy.sqrt(ngrid)
             coul_q = None
 
             log.timer(info % (q + 1), *t0)

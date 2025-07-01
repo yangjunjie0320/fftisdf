@@ -70,7 +70,6 @@ class EriKptTest(TestCase):
             "ke_cutoff": 30.0, 
             "kmesh": [1, 1, 3],
             "cell": "he2-cubic-cell", 
-            "isdf_to_save": None,
             "output": "/dev/null", # suppress output
             "verbose": 0, # suppress output
         }
