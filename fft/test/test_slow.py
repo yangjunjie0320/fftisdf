@@ -100,7 +100,8 @@ if __name__ == "__main__":
     kwargs = {
         "ke_cutoff": 40.0,
         "tol": 1e-5,
-        "basis": "gth-dzvp",
+        "basis": "gth-szv",
+        "pseudo": "gth-pbe",
         "cisdf": None,
         "verbose": 6
     }
