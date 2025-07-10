@@ -21,7 +21,6 @@ def get_ao_eri(df_obj, kpts=None, compact=False):
     assert compact is False, "compact is not supported"
 
     log = logger.new_logger(df_obj)
-    t0 = (process_clock(), perf_counter())
 
     cell = df_obj.cell
     nao = cell.nao_nr()
@@ -59,7 +58,6 @@ def get_ao_eri(df_obj, kpts=None, compact=False):
 
     out = lib.dot(vq, rho34)
     out = out.reshape(shape)
-    log.timer("get_ao_eri", *t0)
     return out
 
 def get_mo_eri(df_obj, mo_coeff_kpts, kpts=None, compact=False):
@@ -67,8 +65,6 @@ def get_mo_eri(df_obj, mo_coeff_kpts, kpts=None, compact=False):
     assert compact is False, "compact is not supported"
 
     log = logger.new_logger(df_obj)
-    t0 = (process_clock(), perf_counter())
-
     cell = df_obj.cell
     nao = cell.nao_nr()
     kpts = numpy.asarray(kpts)
@@ -105,7 +101,6 @@ def get_mo_eri(df_obj, mo_coeff_kpts, kpts=None, compact=False):
 
     out = lib.dot(vq, rho34)
     out = out.reshape(shape)
-    log.timer("get_mo_eri", *t0)
     return out
 
 def ao2mo_7d(df_obj, mo_coeff_kpts, kpts=None, factor=1.0, out=None):
@@ -181,6 +176,9 @@ def ao2mo_7d(df_obj, mo_coeff_kpts, kpts=None, factor=1.0, out=None):
             eri_k1k2k3 = lib.dot(vq, rho34)
             eri_k1k2k3 = eri_k1k2k3.reshape(n1, n2, n3, n4)
             eri_7d[k1, k2, k3] = eri_k1k2k3
+            eri_k1k2k3 = None
+        
+        rho12 = vq = None
     
     log.timer("ao2mo_7d", *t0)
     return eri_7d * factor
