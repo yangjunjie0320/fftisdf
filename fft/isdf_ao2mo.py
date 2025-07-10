@@ -127,6 +127,8 @@ def ao2mo_7d(df_obj, mo_coeff_kpts, kpts=None, factor=1.0, out=None):
         mo_coeff_kpts = [mo_coeff_kpts, ] * 4
     else:
         mo_coeff_kpts = list(mo_coeff_kpts)
+    
+    mo_coeff_kpts = [numpy.array(mo_coeff_kpt) for mo_coeff_kpt in mo_coeff_kpts]
     assert len(mo_coeff_kpts) == 4
 
     # get the Coulomb kernel
