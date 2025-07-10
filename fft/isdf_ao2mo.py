@@ -79,6 +79,9 @@ def get_mo_eri(df_obj, mo_coeff_kpts, kpts=None, compact=False):
         log.warn("kpts are not conserved")
         return numpy.zeros(shape, dtype=numpy.complex128)
     
+    mo_coeff_kpts = [numpy.array(mo_coeff_kpt) for mo_coeff_kpt in mo_coeff_kpts]
+    assert len(mo_coeff_kpts) == 4
+    
     # get the Coulomb kernel
     inpv_kpt = df_obj.inpv_kpt
     coul_kpt = df_obj.coul_kpt
