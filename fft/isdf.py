@@ -219,8 +219,7 @@ class InterpolativeSeparableDensityFitting(FFTDF):
 
     get_eri = isdf_ao2mo.get_ao_eri
     get_ao_eri = isdf_ao2mo.get_ao_eri
-    get_mo_eri = isdf_ao2mo.get_mo_eri
-    ao2mo = isdf_ao2mo.ao2mo_7d
+    ao2mo = get_mo_eri = isdf_ao2mo.get_mo_eri
     ao2mo_spc = isdf_ao2mo.ao2mo_spc
     ao2mo_7d = isdf_ao2mo.ao2mo_7d
 
